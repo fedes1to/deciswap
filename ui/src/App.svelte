@@ -20,6 +20,7 @@
     setActiveProfile,
   } from "./stores/api";
   import { initScreenWidth, initSystemThemeListener, isDarkMode, themeName, appTitle, connectionState } from "./stores/theme";
+  import { installAdminLoginRedirect, refreshAdminSession } from "./stores/admin";
   import { currentRoute } from "./stores/route";
   import { selectedPlaygroundTab, playgroundTabs } from "./stores/playground";
   import { sidebarOpen, sidebarWidth } from "./stores/sidebar";
@@ -44,6 +45,7 @@
     "/settings": wrap({ asyncComponent: () => import("./routes/Settings.svelte"), loadingComponent: RouteLoading }),
     "/performance": wrap({ asyncComponent: () => import("./routes/Performance.svelte"), loadingComponent: RouteLoading }),
     "/hardware": wrap({ asyncComponent: () => import("./routes/Hardware.svelte"), loadingComponent: RouteLoading }),
+    "/admin": wrap({ asyncComponent: () => import("./routes/Admin.svelte"), loadingComponent: RouteLoading }),
     "/tailcat": wrap({ asyncComponent: () => import("./routes/Tailcat.svelte"), loadingComponent: RouteLoading }),
     "*": wrap({ asyncComponent: () => import("./routes/Activity.svelte"), loadingComponent: RouteLoading }),
   };
@@ -58,7 +60,7 @@
     "/settings": "Settings",
     "/performance": "Performance",
     "/hardware": "Hardware",
-    "/tailcat": "Tailcat",
+    "/admin": "Admin",
   };
 
   // The phone header is tight (sidebar button, title, profile picker), so the
@@ -133,6 +135,8 @@
     const cleanupSystemTheme = initSystemThemeListener();
     enableAPIEvents(true);
     checkPerformanceEnabled();
+    const cleanupAdminRedirect = installAdminLoginRedirect();
+    void refreshAdminSession();
     import("./routes/Playground.svelte").then((m) => {
       PlaygroundComponent = m.default;
     });
@@ -144,6 +148,7 @@
       cleanupScreenWidth();
       cleanupSystemTheme();
       enableAPIEvents(false);
+      cleanupAdminRedirect();
     };
   });
 </script>

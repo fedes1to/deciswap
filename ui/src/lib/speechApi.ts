@@ -1,6 +1,7 @@
 import type { SpeechGenerationRequest } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export async function generateSpeech(
   model: string,
@@ -18,6 +19,7 @@ export async function generateSpeech(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...csrfHeaders,
       ...playgroundSessionHeaders,
     },
     body: JSON.stringify(request),

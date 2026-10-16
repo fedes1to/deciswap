@@ -18,6 +18,7 @@ import type {
 } from "../lib/types";
 import { appendActivityFilters, type ActivityFilters } from "../lib/activityFilters";
 import { apiUrl } from "../lib/apiPath";
+import { csrfHeaders } from "../lib/csrf";
 import { connectionState } from "./theme";
 
 // Stores
@@ -209,7 +210,7 @@ export async function setActiveProfile(name: string | null): Promise<void> {
   const revision = profileRevision;
   const response = await fetch(apiUrl("/api/profiles/active"), {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders },
     body: JSON.stringify({ name }),
   });
   if (!response.ok) {
@@ -391,6 +392,7 @@ export async function unloadAllModels(): Promise<void> {
   try {
     const response = await fetch(apiUrl(`/api/models/unload`), {
       method: "POST",
+      headers: csrfHeaders,
     });
     if (!response.ok) {
       throw new Error(`Failed to unload models: ${response.status}`);
@@ -405,6 +407,7 @@ export async function unloadSingleModel(model: string): Promise<void> {
   try {
     const response = await fetch(apiUrl(`/api/models/unload/${model}`), {
       method: "POST",
+      headers: csrfHeaders,
     });
     if (!response.ok) {
       throw new Error(`Failed to unload model: ${response.status}`);
@@ -419,6 +422,7 @@ export async function cancelInflightRequest(id: string): Promise<void> {
   try {
     const response = await fetch(apiUrl(`/api/inflight/${encodeURIComponent(id)}/cancel`), {
       method: "POST",
+      headers: csrfHeaders,
     });
     if (!response.ok) {
       throw new Error(`Failed to cancel request: ${response.status}`);

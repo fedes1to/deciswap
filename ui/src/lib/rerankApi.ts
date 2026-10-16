@@ -1,5 +1,6 @@
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export interface RerankResult {
   index: number;
@@ -21,7 +22,7 @@ export async function rerank(
 ): Promise<RerankResponse> {
   const response = await fetch(apiUrl("/v1/rerank"), {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...playgroundSessionHeaders },
+    headers: { "Content-Type": "application/json", ...csrfHeaders, ...playgroundSessionHeaders },
     body: JSON.stringify({ model, query, documents }),
     signal,
   });

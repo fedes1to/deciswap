@@ -1,6 +1,7 @@
 import type { ChatMessage, ContentPart } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export type Endpoint = "v1/chat/completions" | "v1/messages" | "v1/responses";
 
@@ -543,6 +544,7 @@ export async function* streamChatCompletion(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeaders,
         ...playgroundSessionHeaders,
       },
       body: JSON.stringify(body),

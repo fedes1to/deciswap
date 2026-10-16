@@ -1,6 +1,6 @@
 <script lang="ts">
   import { link } from "svelte-spa-router";
-  import { FerrisWheel, Boxes, Activity, Cat, ScrollText, Gauge, Cpu, Sun, Moon, Monitor, ChevronRight, Settings, CircleQuestionMark } from "@lucide/svelte";
+  import { FerrisWheel, Boxes, Activity, Cat, ScrollText, Gauge, Cpu, Sun, Moon, Monitor, ChevronRight, Settings, CircleQuestionMark, ShieldCheck } from "@lucide/svelte";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -8,6 +8,7 @@
   import { currentRoute } from "../stores/route";
   import { playgroundActivity, docsAgentStreaming } from "../stores/playgroundActivity";
   import { performanceEnabled, models, tailcatStatus } from "../stores/api";
+  import { adminSession } from "../stores/admin";
   import { showUnlistedModels } from "../stores/modelDisplay";
   import { modelsMenuOpen } from "../stores/sidebar";
   import type { Model } from "../lib/types";
@@ -219,6 +220,19 @@
               {/snippet}
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>
+
+          {#if $adminSession?.authenticated}
+            <Sidebar.MenuItem>
+              <Sidebar.MenuButton isActive={isActive("/admin", $currentRoute)} tooltipContent="Admin">
+                {#snippet child({ props })}
+                  <a href="/admin" use:link {...props}>
+                    <ShieldCheck />
+                    <span>Admin</span>
+                  </a>
+                {/snippet}
+              </Sidebar.MenuButton>
+            </Sidebar.MenuItem>
+          {/if}
         </Sidebar.Menu>
       </Sidebar.GroupContent>
     </Sidebar.Group>

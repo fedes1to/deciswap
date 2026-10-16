@@ -1,6 +1,7 @@
 import type { AudioTranscriptionResponse } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export async function transcribeAudio(
   model: string,
@@ -13,7 +14,7 @@ export async function transcribeAudio(
 
   const response = await fetch(apiUrl("/v1/audio/transcriptions"), {
     method: "POST",
-    headers: playgroundSessionHeaders,
+    headers: { ...csrfHeaders, ...playgroundSessionHeaders },
     body: formData,
     signal,
   });
