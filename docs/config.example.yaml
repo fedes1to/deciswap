@@ -329,6 +329,44 @@ selectors:
       # - optional, default: 1
       spillover: 4
 
+  # decision asks a decider model which specialist should handle each request.
+  # The decider is any model ID that serves /v1/systemone (a local model, alias,
+  # or fully qualified peer model). It is called with the last human message of
+  # the request and answers with one of the route labels. The chosen route's
+  # model then receives the request with its model field rewritten.
+  # - routes and settings.default are required; targets is not allowed
+  # - each route needs a description: the decider only sees labels and descriptions
+  # - the decider call is skipped for non-chat routes, and repeated text is cached
+  # - any decider failure, timeout, unknown label or low confidence uses default
+  "auto":
+    strategy: decision
+    name: "Auto"
+    description: "Routes each request to the best model for the task"
+    routes:
+      # label -> target model and the criteria shown to the decider
+      general:
+        model: "gpt-oss-120b"
+        description: "general knowledge, writing, explanations"
+      coding:
+        model: "qwen-unlisted"
+        description: "writing, debugging, reviewing code"
+    settings:
+      # model that serves /v1/systemone; keep it resident (see the KB guide)
+      # - required
+      decider: "docker-llama"
+      # fallback target used on any decider failure
+      # - required
+      default: "gpt-oss-120b"
+      # minimum decider confidence (0..1) to accept its choice
+      # - optional, default: 0 (always take the top choice)
+      minConfidence: 0.5
+      # deadline for the decider call
+      # - optional, default: 5s
+      timeout: 5s
+      # overrides the instructions sent with the routing question
+      # - optional, default: "Which specialist should handle this request?"
+      instructions: "Pick the single best specialist for the user's last message."
+
 # models: a dictionary of model configurations
 # - required
 # - each key is the model's ID, used in API requests

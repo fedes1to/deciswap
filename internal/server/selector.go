@@ -18,6 +18,20 @@ func withSelectorContext(r *http.Request, selectorID string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), selectorContextKey{}, selectorID))
 }
 
+type decisionLabelContextKey struct{}
+
+// withDecisionContext attaches the decision label so metrics can record which
+// route a request took. It is kept off ReqContextData because
+// invalidateRequestContext replaces that value after routing.
+func withDecisionContext(r *http.Request, label string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), decisionLabelContextKey{}, label))
+}
+
+func decisionLabelFromContext(ctx context.Context) string {
+	label, _ := ctx.Value(decisionLabelContextKey{}).(string)
+	return label
+}
+
 func selectorFromContext(ctx context.Context) string {
 	selectorID, _ := ctx.Value(selectorContextKey{}).(string)
 	return selectorID
@@ -106,6 +120,11 @@ func CreateSelectorMiddleware(s *Server) chain.Middleware {
 			selector, found := s.cfg.Selectors[model]
 			if !found {
 				next.ServeHTTP(w, r)
+				return
+			}
+
+			if selector.Strategy == config.SelectorStrategyDecision {
+				s.routeDecision(w, r, next, model, selector)
 				return
 			}
 

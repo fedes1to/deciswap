@@ -163,6 +163,12 @@ func (mp *metricsMonitor) record(modelID string, r *http.Request, recorder *resp
 		}
 		tm.Metadata["selector"] = selectorID
 	}
+	if label := decisionLabelFromContext(r.Context()); label != "" {
+		if tm.Metadata == nil {
+			tm.Metadata = make(map[string]string)
+		}
+		tm.Metadata["decision"] = label
+	}
 
 	queueAndEmit := func() {
 		stored, ok := mp.queueMetrics(tm)

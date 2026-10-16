@@ -71,6 +71,9 @@ type Server struct {
 
 	local router.LocalRouter
 	peer  router.Router
+	// decisions caches decision selector routing choices by classification
+	// text. It is bounded and TTL-limited; a hot config reload rebuilds it.
+	decisions *decisionCache
 
 	mux     *http.ServeMux
 	handler http.Handler
@@ -239,6 +242,7 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 		logs:          logs,
 		perf:          perfMon,
 		inflight:      newInflightTracker(),
+		decisions:     newDecisionCache(decisionCacheSize, decisionCacheTTL),
 		metrics:       newMetricsMonitor(logs.ProxyLogs, cfg.MetricsMaxInMemory, cfg.CaptureBuffer, st),
 		store:         st,
 		build:         build,
