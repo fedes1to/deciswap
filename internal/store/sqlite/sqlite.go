@@ -26,6 +26,7 @@ type Store struct {
 	inMemory bool
 	activity *activityRepository
 	cache    *cacheRepository
+	auth     *authRepository
 }
 
 var _ store.Store = (*Store)(nil)
@@ -73,6 +74,7 @@ func New(path string) (*Store, error) {
 		inMemory: !diskFile,
 		activity: &activityRepository{db: db},
 		cache:    &cacheRepository{db: db},
+		auth:     &authRepository{db: db},
 	}
 	// Drop cache rows that expired while the process was not running, so a
 	// long-lived database does not accumulate them.
@@ -106,6 +108,11 @@ func (s *Store) Activity() store.ActivityRepository {
 // Cache implements store.Store.
 func (s *Store) Cache() store.CacheRepository {
 	return s.cache
+}
+
+// Auth implements store.Store.
+func (s *Store) Auth() store.AuthRepository {
+	return s.auth
 }
 
 // IsInMemory implements store.Store.
