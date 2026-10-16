@@ -276,6 +276,19 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 			internalMetadata["routes"] = selector.Routes
 			internalMetadata["decider"] = selector.Settings.Decider
 			internalMetadata["default"] = selector.Settings.Default
+			// A scoped key may not learn the hidden target models behind the
+			// routes, nor the decider or fallback. It keeps the labels and
+			// descriptions, which say what each route is for.
+			if p := principalFrom(r.Context()); p.kind == principalKey {
+				labels := make(map[string]string, len(selector.Routes))
+				for label, route := range selector.Routes {
+					labels[label] = route.Description
+				}
+				internalMetadata["routes"] = labels
+				delete(internalMetadata, "targets")
+				delete(internalMetadata, "decider")
+				delete(internalMetadata, "default")
+			}
 		}
 		data = append(data, newRecord(
 			selectorID,
