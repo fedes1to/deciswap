@@ -1,9 +1,9 @@
 ---
 title: Profiles and selectors
-summary: Switch model sets at runtime with profiles, or resolve a virtual model ID per request with selectors.
+summary: Switch model sets at runtime with profiles, or resolve a virtual model ID per request with selectors, including automatic routing by a decision model.
 category: guides
-tags: [profiles, selectors, aliases, routing, virtual-models]
-config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets]
+tags: [profiles, selectors, aliases, routing, virtual-models, decision, auto-routing]
+config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets, selectors.*.routes, selectors.*.settings.decider, selectors.*.settings.default, selectors.*.settings.minConfidence, selectors.*.settings.timeout]
 updated: 2026-08-25
 ---
 
@@ -94,6 +94,76 @@ Rules worth knowing:
 - A selector's targets cannot be other selectors.
 - Selectors are **not** supported on `/upstream/<model>` paths.
 - Profiles run first, so a profile pin may target a selector.
+
+### Decision: let a model pick the specialist
+
+`decision` asks a decider model which specialist should handle each request,
+then forwards the request to that model. Clients call one virtual ID such as
+`auto`, and you can define several (`auto`, `auto-coding`, ...) with different
+choices.
+
+```yaml
+selectors:
+  auto:
+    strategy: decision
+    name: "Auto"
+    description: "Routes each request to the best model for the task"
+    routes:
+      general:
+        model: fable-5.1
+        description: "general knowledge, writing, explanations"
+      coding:
+        model: opus-5.5
+        description: "writing, debugging, reviewing code"
+      security:
+        model: glm-5.3
+        description: "pentesting, exploits, CVEs, hardening"
+    settings:
+      decider: kev            # serves /v1/systemone; local, alias or peer model
+      default: fable-5.1      # fallback target, required
+      minConfidence: 0.5      # optional, 0..1, default 0
+      timeout: 5s             # optional, default 5s
+```
+
+Each route is a label, a target model, and a description. The decider only sees
+the labels and descriptions, so the descriptions decide the quality of the
+choice. `targets` is not allowed on a decision selector: llama-swap derives the
+target list from `routes` and `settings.default`.
+
+**What the decider sees.** The text of the last human user turn. Tool results
+are skipped, so an agent's tool loop classifies on the same text as the request
+that started it and stays on the same model. `<system-reminder>` blocks are
+stripped, and long text is cut to its opening and closing parts. Embeddings,
+audio, image, rerank and other non-chat routes never call the decider; they go
+to `default`.
+
+**Caching.** A decision is cached per selector and classification text for ten
+minutes, up to 1024 entries, so repeated turns do not call the decider again.
+
+**Fallback.** The request still succeeds if the decider fails. Any of these
+sends the request to `default`: a decider error or non-200 response, the call
+exceeding `timeout`, a malformed answer, an unknown label, or a confidence below
+`minConfidence`. The response headers say which happened:
+
+- `X-Routed-Model` — the model the request was sent to
+- `X-Routed-Label` — the chosen label, or `default`
+- `X-Routed-Reason` — present only on fallback (`timeout`, `low-confidence`, ...)
+
+**What goes wrong.**
+
+- *The decider gets swapped out.* The decider is an ordinary model, so a swap
+  can unload a target to make room, and a decision then waits for a cold start
+  inside `timeout`. Most requests fall back to `default` in that case. Keep the
+  decider resident with a [matrix or group](groups-and-matrix.md), or use a tiny
+  CPU model such as Julia-1 or Laya so it never competes for VRAM.
+- *Vague labels pick the wrong model.* A route described as "general" will
+  attract anything. Write descriptions that say when the route applies and when
+  it does not, and keep the labels distinct.
+- *Low-confidence answers fall back silently.* Check `X-Routed-Reason` before
+  raising `minConfidence`; a high threshold sends most traffic to `default`.
+
+Set `settings.instructions` to change the question the decider is asked. The
+default is "Which specialist should handle this request?".
 
 ## Which one?
 

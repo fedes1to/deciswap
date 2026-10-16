@@ -358,8 +358,7 @@
             "additionalProperties": {
                 "type": "object",
                 "required": [
-                    "strategy",
-                    "targets"
+                    "strategy"
                 ],
                 "properties": {
                     "strategy": {
@@ -367,18 +366,45 @@
                         "enum": [
                             "warm",
                             "pin",
-                            "spillover"
+                            "spillover",
+                            "decision"
                         ],
-                        "description": "How a target is selected for each request."
+                        "description": "How a target is selected for each request. \"decision\" asks a decider model which entry in routes should handle the request."
                     },
                     "targets": {
                         "type": "array",
                         "minItems": 1,
-                        "items": {
+                        "items": { "type": "string", "minLength": 1 },
+                        "description": "Ordered target model IDs or aliases. Selector IDs cannot be targets. Required for warm, pin and spillover; not allowed for decision."
+                    },
+                    "routes": {
+                        "type": "object",
+                        "default": {},
+                        "description": "For decision: labels the decider can choose, each with the target model and a description sent to the decider. Required, with at least one entry, for decision selectors and not allowed otherwise.",
+                        "propertyNames": {
                             "type": "string",
                             "minLength": 1
                         },
-                        "description": "Ordered target model IDs or aliases. Selector IDs cannot be targets."
+                        "additionalProperties": {
+                            "type": "object",
+                            "required": [
+                                "model"
+                            ],
+                            "properties": {
+                                "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Target model ID or alias for this label."
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "default": "",
+                                    "maxLength": 1024,
+                                    "description": "Criteria sent to the decider describing when this label applies."
+                                }
+                            },
+                            "additionalProperties": false
+                        }
                     },
                     "settings": {
                         "type": "object",
@@ -388,10 +414,39 @@
                                 "minimum": 1,
                                 "default": 1,
                                 "description": "Requests reserved per active target before spilling over to the next target."
+                            },
+                            "decider": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "For decision: model ID (local, alias or fully qualified peer model) that serves /v1/systemone and answers the routing question. Cannot be a selector."
+                            },
+                            "default": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "For decision: fallback target used when the decider fails, times out, answers an unknown label, or is below minConfidence. Required."
+                            },
+                            "minConfidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "default": 0,
+                                "description": "For decision: minimum decider confidence to accept its choice. 0 always takes the top choice."
+                            },
+                            "timeout": {
+                                "type": "string",
+                                "default": "5s",
+                                "description": "For decision: deadline for the decider call (Go duration, for example 5s). Must be greater than 0."
+                            },
+                            "instructions": {
+                                "type": "string",
+                                "default": "",
+                                "maxLength": 1024,
+                                "description": "For decision: overrides the instructions sent with the routing question."
                             }
                         },
                         "additionalProperties": false,
-                        "default": {}
+                        "default": {},
+                        "description": "Strategy-specific settings. spillover applies to spillover selectors; decider, default, minConfidence, timeout and instructions apply to decision selectors."
                     },
                     "name": {
                         "type": "string",
@@ -707,7 +762,10 @@
                 },
                 "models": {
                     "type": "array",
-                    "items": { "type": "string", "minLength": 1 },
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
                     "default": [],
                     "description": "Exact public model request IDs exposed through Tailcat. The -listen-tailcat flag requires at least one entry; '*' exposes every callable model."
                 },

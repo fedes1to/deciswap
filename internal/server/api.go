@@ -272,6 +272,11 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		if selector.Strategy == config.SelectorStrategySpillover {
 			internalMetadata["spillover"] = selector.Settings.Spillover
 		}
+		if selector.Strategy == config.SelectorStrategyDecision {
+			internalMetadata["routes"] = selector.Routes
+			internalMetadata["decider"] = selector.Settings.Decider
+			internalMetadata["default"] = selector.Settings.Default
+		}
 		data = append(data, newRecord(
 			selectorID,
 			selector.Name,
