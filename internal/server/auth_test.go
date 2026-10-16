@@ -204,6 +204,36 @@ func TestAuth_LegacyKeyFullAccess(t *testing.T) {
 	assert.Contains(t, w.Body.String(), `"m2"`)
 }
 
+// Legacy apiKeys are full-access for inference and ops routes, but not for
+// /api/admin/*: browsers replay cached Basic credentials on cross-site
+// requests, and config writes run commands, so a legacy key must not reach them.
+func TestAuth_LegacyKeyDeniedOnAdminAPI(t *testing.T) {
+	cfg := config.Config{
+		RequiredAPIKeys: []string{"secret"},
+		Models:          map[string]config.ModelConfig{"m1": {Cmd: "x"}},
+	}
+	s, _ := newAuthTestServer(t, cfg, "m1")
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"list keys", http.MethodGet, "/api/admin/keys"},
+		{"read config", http.MethodGet, "/api/admin/config"},
+		{"write config", http.MethodPut, "/api/admin/config"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(tt.method, tt.path, nil)
+			r.Header.Set("Authorization", "Bearer secret")
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			assert.Equal(t, http.StatusForbidden, w.Code)
+		})
+	}
+}
+
 func TestAuth_CSRFRequiredOnCookieUnsafe(t *testing.T) {
 	cfg := config.Config{
 		Models: map[string]config.ModelConfig{"m1": {Cmd: "x"}},
