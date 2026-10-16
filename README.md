@@ -9,6 +9,17 @@ Run multiple generative AI models on your machine and hot-swap between them on d
 
 Built in Go for performance and simplicity, llama-swap has zero dependencies and is incredibly easy to set up. Get started in minutes - just one binary and one configuration file.
 
+## Fork additions
+
+This fork adds:
+
+- **Decision selectors (`auto`).** A `strategy: decision` selector asks a
+  System One decision model which specialist should handle each request, then
+  routes it to that model. See the [profiles and selectors guide](docs/kb/guides/routing/profiles-and-selectors.md#decision-let-a-model-pick-the-specialist).
+- **Admin account, 2FA, and scoped API keys.** Set up an admin account with
+  TOTP and recovery codes, create keys limited to specific models or selectors,
+  and edit the config from the admin UI. See the [API keys and auth guide](docs/kb/guides/api-integration/api-keys-and-auth.md).
+
 ## Features:
 
 - ✅ Easy to deploy and configure: one binary, one configuration file. no external dependencies
