@@ -316,6 +316,15 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 		}
 		data = filtered
 	}
+	if p := principalFrom(r.Context()); p.kind == principalKey {
+		filtered := data[:0]
+		for _, record := range data {
+			if keyAllowsModel(s.cfg, p.key.Models, record.ID) {
+				filtered = append(filtered, record)
+			}
+		}
+		data = filtered
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{

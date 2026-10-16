@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/mostlygeek/llama-swap/docs"
+	"github.com/mostlygeek/llama-swap/internal/auth"
 	"github.com/mostlygeek/llama-swap/internal/config"
 	"github.com/mostlygeek/llama-swap/internal/docagent"
 	"github.com/mostlygeek/llama-swap/internal/event"
@@ -30,7 +31,7 @@ import (
 	"github.com/mostlygeek/llama-swap/internal/store/sqlite"
 	"github.com/mostlygeek/llama-swap/internal/swaputil"
 	"github.com/mostlygeek/llama-swap/internal/tailcat"
-	"github.com/mostlygeek/llama-swap/internal/watcher"
+	configwatcher "github.com/mostlygeek/llama-swap/internal/watcher"
 )
 
 var (
@@ -72,6 +73,62 @@ func configStorePath(cfg config.Config) string {
 		return ""
 	}
 	return strings.TrimSpace(cfg.Store.Path)
+}
+
+// authStorePath returns the auth database path (contract section 0): store.path
+// when configured, otherwise llama-swap-auth.db next to the config file, or in
+// the config directory when only -config-dir is given. It returns "" when no
+// location can be derived, which selects the in-memory store.
+func authStorePath(cfg config.Config, configPath, configDir string) string {
+	if p := configStorePath(cfg); p != "" {
+		return p
+	}
+	switch {
+	case configPath != "":
+		return filepath.Join(filepath.Dir(configPath), "llama-swap-auth.db")
+	case configDir != "":
+		return filepath.Join(configDir, "llama-swap-auth.db")
+	}
+	return ""
+}
+
+// openAuthStore opens the auth store, falling back to an in-memory store (with a
+// warning) when the file cannot be opened.
+func openAuthStore(cfg config.Config, configPath, configDir string) (*sqlite.Store, error) {
+	path := authStorePath(cfg, configPath, configDir)
+	st, err := sqlite.New(path)
+	if err != nil && path != "" {
+		slog.Warn("failed to open auth database, falling back to in-memory auth store", "path", path, "error", err)
+		return sqlite.New("")
+	}
+	return st, err
+}
+
+// runResetAdmin implements -reset-admin: it deletes the admin account, recovery
+// codes and sessions (API keys are kept) and returns the process exit code.
+func runResetAdmin(configPath, configDir string, out io.Writer) int {
+	cfg, err := config.LoadConfigSources(configPath, configDir)
+	if err != nil {
+		fmt.Fprintf(out, "failed to load config: %v\n", err)
+		return 1
+	}
+	st, err := openAuthStore(cfg, configPath, configDir)
+	if err != nil {
+		fmt.Fprintf(out, "failed to open auth store: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+	svc, err := auth.New(context.Background(), st.Auth(), auth.Options{})
+	if err != nil {
+		fmt.Fprintf(out, "failed to initialise auth: %v\n", err)
+		return 1
+	}
+	if err := svc.ResetAdmin(context.Background()); err != nil {
+		fmt.Fprintf(out, "failed to reset admin: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(out, "admin account reset: run the setup flow again to create a new admin")
+	return 0
 }
 
 func configureTailcatListener(cfg *config.Config, keyPath string) error {
@@ -124,6 +181,7 @@ func main() {
 	flagVersion := flag.Bool("version", false, "show version and exit")
 	flagWatchConfig := flag.Bool("watch-config", false, "reload config on file change")
 	flagValidate := flag.Bool("validate", false, "validate the config file and exit (without starting the server)")
+	flagResetAdmin := flag.Bool("reset-admin", false, "delete the admin account, recovery codes, and sessions, then exit (API keys are kept)")
 	flag.Parse()
 
 	if *flagVersion {
@@ -139,6 +197,10 @@ func main() {
 	if *flagValidate {
 		code := runValidate(*flagConfig, *flagConfigDir, os.Stdout)
 		os.Exit(code)
+	}
+
+	if *flagResetAdmin {
+		os.Exit(runResetAdmin(*flagConfig, *flagConfigDir, os.Stdout))
 	}
 
 	useTLS := *flagCertFile != "" || *flagKeyFile != ""
@@ -247,7 +309,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	initialSrv, err := server.New(cfg, logs, perfMon, initialStore, buildInfo, hardwareSnapshot, referenceDocs)
+	authStore, err := openAuthStore(cfg, *flagConfig, *flagConfigDir)
+	if err != nil {
+		slog.Error("failed to open auth store", "error", err)
+		os.Exit(1)
+	}
+	authSvc, err := auth.New(context.Background(), authStore.Auth(), auth.Options{})
+	if err != nil {
+		slog.Error("failed to initialise auth", "error", err)
+		os.Exit(1)
+	}
+	if token, ok := authSvc.SetupToken(); ok {
+		proxyLog.Infof("ADMIN SETUP TOKEN (shown once): %s  -- open /ui/ and enter it to create the admin account", token)
+	}
+	var reload func()
+	adminDeps := server.AdminDeps{
+		Auth:       authSvc,
+		ConfigPath: *flagConfig,
+		ConfigDir:  *flagConfigDir,
+		Reload:     func() { go reload() },
+	}
+	initialSrv, err := server.New(cfg, logs, perfMon, initialStore, buildInfo, hardwareSnapshot, referenceDocs, adminDeps)
 	if err != nil {
 		slog.Error("failed to create server", "error", err)
 		initialStore.Close()
@@ -312,7 +394,7 @@ func main() {
 	var reloading bool
 	var reloadMu sync.Mutex
 
-	reload := func() {
+	reload = func() {
 		reloadMu.Lock()
 		if reloading {
 			reloadMu.Unlock()
@@ -355,7 +437,7 @@ func main() {
 			}
 		}
 
-		newSrv, err := server.New(newCfg, logs, perfMon, newStore, buildInfo, hardwareSnapshot, referenceDocs)
+		newSrv, err := server.New(newCfg, logs, perfMon, newStore, buildInfo, hardwareSnapshot, referenceDocs, adminDeps)
 		if err != nil {
 			proxyLog.Warnf("failed to build new server during reload: %v", err)
 			if storeChanged {
@@ -525,6 +607,10 @@ func main() {
 				}
 				if err := st.Close(); err != nil {
 					proxyLog.Warnf("store shutdown error: %v", err)
+				}
+
+				if err := authStore.Close(); err != nil {
+					proxyLog.Warnf("auth store shutdown error: %v", err)
 				}
 
 				close(exitChan)
