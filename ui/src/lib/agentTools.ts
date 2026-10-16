@@ -1,5 +1,6 @@
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 import type { ToolDefinition } from "./chatApi";
 
 /**
@@ -87,6 +88,7 @@ async function rpc(method: string, params?: unknown, toolName?: string, signal?:
     "Content-Type": "application/json",
     "Mcp-Protocol-Version": MCP_PROTOCOL_VERSION,
     "Mcp-Method": method,
+    ...csrfHeaders,
     ...playgroundSessionHeaders,
   };
   if (toolName) {

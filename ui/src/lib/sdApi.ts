@@ -1,6 +1,7 @@
 import type { SdApiTxt2ImgRequest, SdApiResponse, SdApiLora } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export async function generateSdImage(
   request: SdApiTxt2ImgRequest,
@@ -10,6 +11,7 @@ export async function generateSdImage(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...csrfHeaders,
       ...playgroundSessionHeaders,
     },
     body: JSON.stringify(request),

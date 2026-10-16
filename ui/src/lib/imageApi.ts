@@ -1,6 +1,7 @@
 import type { ImageGenerationRequest, ImageGenerationResponse } from "./types";
 import { playgroundSessionHeaders } from "./playgroundSession";
 import { apiUrl } from "./apiPath";
+import { csrfHeaders } from "./csrf";
 
 export async function generateImage(
   model: string,
@@ -19,6 +20,7 @@ export async function generateImage(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...csrfHeaders,
       ...playgroundSessionHeaders,
     },
     body: JSON.stringify(request),

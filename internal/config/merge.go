@@ -31,8 +31,70 @@ var identityMapPaths = map[string]bool{
 // merged in sorted filename order. The merged document is passed through the
 // existing LoadConfigFromReader pipeline unchanged.
 func LoadConfigSources(configPath, configDir string) (Config, error) {
+	sourcePaths, err := configSourcePaths(configPath, configDir)
+	if err != nil {
+		return Config{}, err
+	}
+	return mergeConfigSources(sourcePaths, parseSource)
+}
+
+// ConfigSourceFiles returns the absolute paths LoadConfigSources would read,
+// in merge order (-config first, then sorted *.yml/*.yaml in -config-dir).
+func ConfigSourceFiles(configPath, configDir string) ([]string, error) {
+	sourcePaths, err := configSourcePaths(configPath, configDir)
+	if err != nil {
+		return nil, err
+	}
+	absPaths := make([]string, 0, len(sourcePaths))
+	for _, p := range sourcePaths {
+		absPath, err := filepath.Abs(p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve config source %s: %w", p, err)
+		}
+		absPaths = append(absPaths, absPath)
+	}
+	return absPaths, nil
+}
+
+// LoadConfigSourcesWithOverlay is LoadConfigSources with the content of one
+// source replaced in memory. overlayPath must be one of ConfigSourceFiles.
+// Never writes to disk.
+func LoadConfigSourcesWithOverlay(configPath, configDir, overlayPath string, overlayContent []byte) (Config, error) {
+	sourcePaths, err := configSourcePaths(configPath, configDir)
+	if err != nil {
+		return Config{}, err
+	}
+	overlayAbs, err := filepath.Abs(overlayPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to resolve overlay path %s: %w", overlayPath, err)
+	}
+	overlaySource := ""
+	for _, p := range sourcePaths {
+		absPath, err := filepath.Abs(p)
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to resolve config source %s: %w", p, err)
+		}
+		if absPath == overlayAbs {
+			overlaySource = p
+			break
+		}
+	}
+	if overlaySource == "" {
+		return Config{}, fmt.Errorf("overlay %s is not one of the config sources", overlayPath)
+	}
+	return mergeConfigSources(sourcePaths, func(p string) (*yaml.Node, error) {
+		if p != overlaySource {
+			return parseSource(p)
+		}
+		return parseSourceBytes(p, overlayContent)
+	})
+}
+
+// configSourcePaths returns the -config file followed by the top-level YAML
+// files in -config-dir, in merge order, using the paths as given.
+func configSourcePaths(configPath, configDir string) ([]string, error) {
 	if configPath == "" && configDir == "" {
-		return Config{}, fmt.Errorf("at least one of -config or -config-dir must be provided")
+		return nil, fmt.Errorf("at least one of -config or -config-dir must be provided")
 	}
 
 	var sourcePaths []string
@@ -44,21 +106,21 @@ func LoadConfigSources(configPath, configDir string) (Config, error) {
 	if configDir != "" {
 		dirFiles, err := listYAMLFiles(configDir)
 		if err != nil {
-			return Config{}, fmt.Errorf("-config-dir %s: %w", configDir, err)
+			return nil, fmt.Errorf("-config-dir %s: %w", configDir, err)
 		}
 
 		if configPath != "" {
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
-				return Config{}, fmt.Errorf("failed to resolve -config path: %w", err)
+				return nil, fmt.Errorf("failed to resolve -config path: %w", err)
 			}
 			for _, f := range dirFiles {
 				absF, err := filepath.Abs(f)
 				if err != nil {
-					return Config{}, fmt.Errorf("failed to resolve config dir file %s: %w", f, err)
+					return nil, fmt.Errorf("failed to resolve config dir file %s: %w", f, err)
 				}
 				if absConfig == absF {
-					return Config{}, fmt.Errorf("-config path %s is also present in -config-dir %s; remove it from one", configPath, configDir)
+					return nil, fmt.Errorf("-config path %s is also present in -config-dir %s; remove it from one", configPath, configDir)
 				}
 			}
 		}
@@ -67,12 +129,17 @@ func LoadConfigSources(configPath, configDir string) (Config, error) {
 	}
 
 	if len(sourcePaths) == 0 {
-		return Config{}, fmt.Errorf("no configuration sources found")
+		return nil, fmt.Errorf("no configuration sources found")
 	}
+	return sourcePaths, nil
+}
 
+// mergeConfigSources parses each source with parse, merges them in order, and
+// runs the merged document through LoadConfigFromReader.
+func mergeConfigSources(sourcePaths []string, parse func(path string) (*yaml.Node, error)) (Config, error) {
 	var merged *yaml.Node
 	for _, p := range sourcePaths {
-		node, err := parseSource(p)
+		node, err := parse(p)
 		if err != nil {
 			return Config{}, err
 		}
@@ -135,6 +202,12 @@ func parseSource(path string) (*yaml.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config %s: %w", path, err)
 	}
+	return parseSourceBytes(path, data)
+}
+
+// parseSourceBytes parses one config source already read into data. path is
+// used only in error messages.
+func parseSourceBytes(path string, data []byte) (*yaml.Node, error) {
 	yamlStr, err := substituteEnvMacros(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("config %s: %w", path, err)

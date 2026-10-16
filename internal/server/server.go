@@ -31,7 +31,8 @@ import (
 // dispatch. It supersedes router.Server: it builds the local and peer routers
 // directly and dispatches between them itself.
 type Server struct {
-	cfg config.Config
+	cfg   config.Config
+	admin AdminDeps
 
 	logs *logmon.Group
 
@@ -210,7 +211,7 @@ type BuildInfo struct {
 	Date    string
 }
 
-func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.Store, build BuildInfo, hardware *hw.HardwareSnapshot, refs *docagent.Docs) (*Server, error) {
+func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.Store, build BuildInfo, hardware *hw.HardwareSnapshot, refs *docagent.Docs, admin AdminDeps) (*Server, error) {
 	var local router.LocalRouter
 	var err error
 
@@ -251,6 +252,7 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 		activeProfile: cfg.Hooks.OnStartup.Profile,
 		local:         local,
 		peer:          peer,
+		admin:         admin,
 		shutdownCtx:   shutdownCtx,
 		shutdownFn:    shutdownFn,
 	}
@@ -340,8 +342,8 @@ func stripAudioAPIPrefix(r *http.Request) {
 // global CORS middleware.
 func (s *Server) routes() {
 
-	authMW := CreateAuthMiddleware(s.cfg)
-	modelMWs := []chain.Middleware{authMW, createContentTypeMiddleware()}
+	inferenceGate := s.accessGate(classInference)
+	modelMWs := []chain.Middleware{inferenceGate, createContentTypeMiddleware()}
 	// globalConcurrencyLimit guards the top of the inference chain; a limit of
 	// 0 (the default) means no limit, so the handler is left out of the chain
 	// entirely rather than wrapping every request in a no-op semaphore.
@@ -358,8 +360,9 @@ func (s *Server) routes() {
 		CreateMetricsMiddleware(s.metrics, s.cfg),
 	)
 	modelChain := chain.New(modelMWs...)
-	// Custom endpoints only need auth.
-	apiChain := chain.New(authMW)
+	// Custom endpoints only need the access gate.
+	apiChain := chain.New(s.accessGate(classOps))
+	listChain := chain.New(s.accessGate(classInferenceList))
 
 	mux := http.NewServeMux()
 	dispatch := http.HandlerFunc(s.localPeerHandler)
@@ -375,8 +378,8 @@ func (s *Server) routes() {
 	}
 
 	// llama-swap API + custom endpoints.
-	mux.Handle("GET /v1/models", apiChain.ThenFunc(s.handleListModels))
-	mux.Handle("GET /models", apiChain.ThenFunc(s.handleListModels))
+	mux.Handle("GET /v1/models", listChain.ThenFunc(s.handleListModels))
+	mux.Handle("GET /models", listChain.ThenFunc(s.handleListModels))
 	mux.Handle("GET /logs", apiChain.ThenFunc(s.handleLogs))
 	mux.Handle("GET /logs/stream", apiChain.ThenFunc(s.handleLogStream))
 	mux.Handle("GET /logs/stream/{logMonitorID...}", apiChain.ThenFunc(s.handleLogStream))
@@ -392,7 +395,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
 		redirectRelative(w, "ui/", http.StatusPermanentRedirect)
 	})
-	mux.Handle("GET /ui/", chain.New(authMW).ThenFunc(s.handleUI))
+	mux.Handle("GET /ui/", chain.New(s.accessGate(classUI)).ThenFunc(s.handleUI))
 	// The browser fetches the web app manifest - and the icons it references -
 	// itself while deciding whether to offer installing the PWA, and it has no
 	// way to attach an API key to those requests. Serve them without auth so
@@ -416,7 +419,7 @@ func (s *Server) routes() {
 
 	// Upstream passthrough. Meter only the model-dispatched endpoints that can
 	// produce token usage/timings.
-	upstreamChain := apiChain.Append(
+	upstreamChain := chain.New(inferenceGate).Append(
 		CreateProfileMiddleware(s),
 		CreateUpstreamInflightMiddleware(s.inflight, s.cfg),
 		CreateMetricsMiddleware(s.metrics, s.cfg),
@@ -456,9 +459,12 @@ func (s *Server) routes() {
 	// Registered without a method so non-POST reaches the handler and gets a
 	// 405 with Allow, rather than the mux's bare 404.
 	mux.Handle("/api/mcp", apiChain.ThenFunc(s.handleAPIMCP))
+	// Admin API (contract 4.6). The access gate passes the public rows through
+	// and requires an admin session for the rest.
+	mux.Handle("/api/admin/", chain.New(s.accessGate(classAdmin)).Then(newAdminHandler(s.admin, s.cfg)))
 
 	s.mux = mux
-	s.handler = chain.New(CreateRequestLogMiddleware(s.logs.HttpLogs), CreateCORSMiddleware(s.cfg)).Then(mux)
+	s.handler = chain.New(CreateRequestLogMiddleware(s.logs.HttpLogs), CreateCORSMiddleware(s.cfg), s.principalMiddleware).Then(mux)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

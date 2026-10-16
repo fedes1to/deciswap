@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"github.com/mostlygeek/llama-swap/docs"
+	"github.com/mostlygeek/llama-swap/internal/auth"
 	"github.com/mostlygeek/llama-swap/internal/config"
 	"github.com/mostlygeek/llama-swap/internal/docagent"
 	"github.com/mostlygeek/llama-swap/internal/event"
@@ -30,7 +33,7 @@ import (
 	"github.com/mostlygeek/llama-swap/internal/store/sqlite"
 	"github.com/mostlygeek/llama-swap/internal/swaputil"
 	"github.com/mostlygeek/llama-swap/internal/tailcat"
-	"github.com/mostlygeek/llama-swap/internal/watcher"
+	configwatcher "github.com/mostlygeek/llama-swap/internal/watcher"
 )
 
 var (
@@ -72,6 +75,62 @@ func configStorePath(cfg config.Config) string {
 		return ""
 	}
 	return strings.TrimSpace(cfg.Store.Path)
+}
+
+// authStorePath returns the auth database path (contract section 0): store.path
+// when configured, otherwise llama-swap-auth.db next to the config file, or in
+// the config directory when only -config-dir is given. It returns "" when no
+// location can be derived, which selects the in-memory store.
+func authStorePath(cfg config.Config, configPath, configDir string) string {
+	if p := configStorePath(cfg); p != "" {
+		return p
+	}
+	switch {
+	case configPath != "":
+		return filepath.Join(filepath.Dir(configPath), "llama-swap-auth.db")
+	case configDir != "":
+		return filepath.Join(configDir, "llama-swap-auth.db")
+	}
+	return ""
+}
+
+// openAuthStore opens the auth store, falling back to an in-memory store (with a
+// warning) when the file cannot be opened.
+func openAuthStore(cfg config.Config, configPath, configDir string) (*sqlite.Store, error) {
+	path := authStorePath(cfg, configPath, configDir)
+	st, err := sqlite.New(path)
+	if err != nil && path != "" {
+		slog.Warn("failed to open auth database, falling back to in-memory auth store", "path", path, "error", err)
+		return sqlite.New("")
+	}
+	return st, err
+}
+
+// runResetAdmin implements -reset-admin: it deletes the admin account, recovery
+// codes and sessions (API keys are kept) and returns the process exit code.
+func runResetAdmin(configPath, configDir string, out io.Writer) int {
+	cfg, err := config.LoadConfigSources(configPath, configDir)
+	if err != nil {
+		fmt.Fprintf(out, "failed to load config: %v\n", err)
+		return 1
+	}
+	st, err := openAuthStore(cfg, configPath, configDir)
+	if err != nil {
+		fmt.Fprintf(out, "failed to open auth store: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+	svc, err := auth.New(context.Background(), st.Auth(), auth.Options{})
+	if err != nil {
+		fmt.Fprintf(out, "failed to initialise auth: %v\n", err)
+		return 1
+	}
+	if err := svc.ResetAdmin(context.Background()); err != nil {
+		fmt.Fprintf(out, "failed to reset admin: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(out, "admin account reset: run the setup flow again to create a new admin")
+	return 0
 }
 
 func configureTailcatListener(cfg *config.Config, keyPath string) error {
@@ -124,6 +183,7 @@ func main() {
 	flagVersion := flag.Bool("version", false, "show version and exit")
 	flagWatchConfig := flag.Bool("watch-config", false, "reload config on file change")
 	flagValidate := flag.Bool("validate", false, "validate the config file and exit (without starting the server)")
+	flagResetAdmin := flag.Bool("reset-admin", false, "delete the admin account, recovery codes, and sessions, then exit (API keys are kept)")
 	flag.Parse()
 
 	if *flagVersion {
@@ -141,6 +201,10 @@ func main() {
 		os.Exit(code)
 	}
 
+	if *flagResetAdmin {
+		os.Exit(runResetAdmin(*flagConfig, *flagConfigDir, os.Stdout))
+	}
+
 	useTLS := *flagCertFile != "" || *flagKeyFile != ""
 	if (*flagCertFile != "" && *flagKeyFile == "") || (*flagCertFile == "" && *flagKeyFile != "") {
 		slog.Error("both -tls-cert-file and -tls-key-file must be provided for TLS")
@@ -156,7 +220,7 @@ func main() {
 		}
 	}
 
-	cfg, err := config.LoadConfigSources(*flagConfig, *flagConfigDir)
+	cfg, loadedFingerprint, err := loadSources(*flagConfig, *flagConfigDir)
 	if err != nil {
 		slog.Error("failed to load config", "config", *flagConfig, "config-dir", *flagConfigDir, "error", err)
 		os.Exit(1)
@@ -247,7 +311,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	initialSrv, err := server.New(cfg, logs, perfMon, initialStore, buildInfo, hardwareSnapshot, referenceDocs)
+	authStore, err := openAuthStore(cfg, *flagConfig, *flagConfigDir)
+	if err != nil {
+		slog.Error("failed to open auth store", "error", err)
+		os.Exit(1)
+	}
+	authSvc, err := auth.New(context.Background(), authStore.Auth(), auth.Options{})
+	if err != nil {
+		slog.Error("failed to initialise auth", "error", err)
+		os.Exit(1)
+	}
+	if token, ok := authSvc.SetupToken(); ok {
+		proxyLog.Infof("ADMIN SETUP TOKEN (shown once): %s  -- open /ui/ and enter it to create the admin account", token)
+	}
+	var reload, reloadIfChanged func()
+	adminDeps := server.AdminDeps{
+		Auth:       authSvc,
+		ConfigPath: *flagConfig,
+		ConfigDir:  *flagConfigDir,
+		Reload:     func() { go reloadIfChanged() },
+	}
+	initialSrv, err := server.New(cfg, logs, perfMon, initialStore, buildInfo, hardwareSnapshot, referenceDocs, adminDeps)
 	if err != nil {
 		slog.Error("failed to create server", "error", err)
 		initialStore.Close()
@@ -307,28 +391,25 @@ func main() {
 		}),
 	}
 
-	// reload guards against overlapping reloads triggered by concurrent signals
-	// or file-watcher callbacks.
-	var reloading bool
+	// reloadMu guards reloading and reloadPending. A call that arrives while a
+	// reload runs sets reloadPending instead of being dropped, so the running
+	// loop checks the sources again once it finishes. loadedFingerprint is only
+	// accessed from the reload loop, which runs one reload at a time.
+	var reloading, reloadPending, reloadPendingForce bool
 	var reloadMu sync.Mutex
 
-	reload := func() {
-		reloadMu.Lock()
-		if reloading {
-			reloadMu.Unlock()
+	// reloadOnce applies the current config sources. Unless force is set, it
+	// skips the reload when the sources match what is already live.
+	reloadOnce := func(force bool) {
+		fingerprint, fpErr := sourcesFingerprint(*flagConfig, *flagConfigDir)
+		if !force && fpErr == nil && fingerprint == loadedFingerprint {
+			proxyLog.Info("config sources unchanged since last reload, skipping")
 			return
 		}
-		reloading = true
-		reloadMu.Unlock()
-		defer func() {
-			reloadMu.Lock()
-			reloading = false
-			reloadMu.Unlock()
-		}()
 
 		proxyLog.Info("reloading configuration")
 
-		newCfg, err := config.LoadConfigSources(*flagConfig, *flagConfigDir)
+		newCfg, loaded, err := loadSources(*flagConfig, *flagConfigDir)
 		if err != nil {
 			proxyLog.Warnf("failed to reload config: %v", err)
 			return
@@ -355,7 +436,7 @@ func main() {
 			}
 		}
 
-		newSrv, err := server.New(newCfg, logs, perfMon, newStore, buildInfo, hardwareSnapshot, referenceDocs)
+		newSrv, err := server.New(newCfg, logs, perfMon, newStore, buildInfo, hardwareSnapshot, referenceDocs, adminDeps)
 		if err != nil {
 			proxyLog.Warnf("failed to build new server during reload: %v", err)
 			if storeChanged {
@@ -379,6 +460,7 @@ func main() {
 		activeStore = newStore
 		activeStorePath = newStorePath
 		activeMu.Unlock()
+		loadedFingerprint = loaded
 
 		applyLogSettings(newCfg)
 		if perfMon != nil {
@@ -402,6 +484,34 @@ func main() {
 		proxyLog.Info("configuration reloaded")
 	}
 
+	// reloadConfig runs reloadOnce, then any reload requested while it ran.
+	reloadConfig := func(force bool) {
+		reloadMu.Lock()
+		if reloading {
+			reloadPending = true
+			reloadPendingForce = reloadPendingForce || force
+			reloadMu.Unlock()
+			return
+		}
+		reloading = true
+		reloadMu.Unlock()
+		for {
+			reloadOnce(force)
+			reloadMu.Lock()
+			if !reloadPending {
+				reloading = false
+				reloadMu.Unlock()
+				return
+			}
+			force = reloadPendingForce
+			reloadPending, reloadPendingForce = false, false
+			reloadMu.Unlock()
+		}
+	}
+
+	reload = func() { reloadConfig(true) }
+	reloadIfChanged = func() { reloadConfig(false) }
+
 	watcherCtx, watcherCancel := context.WithCancel(context.Background())
 	defer watcherCancel()
 
@@ -418,7 +528,7 @@ func main() {
 				(&configwatcher.Watcher{
 					Path:     absConfigPath,
 					Interval: configwatcher.DefaultInterval,
-					OnChange: reload,
+					OnChange: reloadIfChanged,
 				}).Run(watcherCtx)
 			}()
 		}
@@ -433,7 +543,7 @@ func main() {
 				(&configwatcher.DirWatcher{
 					Path:     absConfigDir,
 					Interval: configwatcher.DefaultInterval,
-					OnChange: reload,
+					OnChange: reloadIfChanged,
 				}).Run(watcherCtx)
 			}()
 		}
@@ -527,6 +637,10 @@ func main() {
 					proxyLog.Warnf("store shutdown error: %v", err)
 				}
 
+				if err := authStore.Close(); err != nil {
+					proxyLog.Warnf("auth store shutdown error: %v", err)
+				}
+
 				close(exitChan)
 				return
 			}
@@ -535,4 +649,40 @@ func main() {
 
 	<-exitChan
 	proxyLog.Info("shutdown complete")
+}
+
+// sourcesFingerprint hashes the path and bytes of every config source file in
+// merge order. Equal fingerprints mean LoadConfigSources yields the same
+// config, whatever the file mtimes are.
+func sourcesFingerprint(configPath, configDir string) (string, error) {
+	files, err := config.ConfigSourceFiles(configPath, configDir)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%s\x00%d\x00", f, len(data))
+		h.Write(data)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// loadSources loads the config sources and returns the fingerprint of the
+// bytes they hold. The fingerprint is "" if the sources changed during the
+// load or could not be read, so the next check treats them as unloaded.
+func loadSources(configPath, configDir string) (config.Config, string, error) {
+	before, beforeErr := sourcesFingerprint(configPath, configDir)
+	cfg, err := config.LoadConfigSources(configPath, configDir)
+	if err != nil {
+		return cfg, "", err
+	}
+	after, afterErr := sourcesFingerprint(configPath, configDir)
+	if beforeErr != nil || afterErr != nil || before != after {
+		return cfg, "", nil
+	}
+	return cfg, before, nil
 }

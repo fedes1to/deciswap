@@ -302,3 +302,43 @@ func TestLoadConfigSources_NullYieldsToValue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, cfg.Routing.Router.Settings.Groups, "g1")
 }
+
+func TestLoadConfigSourcesWithOverlay_RejectsBadYAML(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeYAML(t, dir, "config.yaml", "models:\n"+modelCfg("m1", "echo m1"))
+	before, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	_, err = LoadConfigSourcesWithOverlay(cfgPath, "", cfgPath, []byte("models: [unclosed"))
+	require.Error(t, err)
+
+	after, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "overlay must never write to disk")
+}
+
+func TestLoadConfigSourcesWithOverlay_AcceptsReplacement(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeYAML(t, dir, "config.yaml", "models:\n"+modelCfg("m1", "echo m1"))
+	before, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	cfg, err := LoadConfigSourcesWithOverlay(cfgPath, "", cfgPath, []byte("models:\n"+modelCfg("m2", "echo m2")))
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Models, "m2")
+	assert.NotContains(t, cfg.Models, "m1")
+
+	after, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "overlay must never write to disk")
+}
+
+func TestLoadConfigSourcesWithOverlay_RejectsPathOutsideSources(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "a.yaml", "models:\n"+modelCfg("m1", "echo m1"))
+	other := writeYAML(t, t.TempDir(), "other.yaml", "models:\n"+modelCfg("m2", "echo m2"))
+
+	_, err := LoadConfigSourcesWithOverlay("", dir, other, []byte("models:\n"+modelCfg("m3", "echo m3")))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not one of the config sources")
+}
