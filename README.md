@@ -414,3 +414,12 @@ curl -Ns 'http://host/logs/stream?no-history'
 Any OpenAI compatible server would work. llama-swap was originally designed for llama-server and it is the best supported.
 
 For Python based inference servers like vllm or tabbyAPI it is recommended to run them via podman or docker. This provides clean environment isolation as well as responding correctly to `SIGTERM` signals for proper shutdown.
+
+## License
+
+This fork is distributed under the GNU General Public License v3.0 (see
+[LICENSE.md](LICENSE.md)).
+
+It is derived from [llama-swap](https://github.com/mostlygeek/llama-swap),
+Copyright (c) 2024 Benson Wong, which was released under the MIT License. The
+original MIT license text is preserved in [LICENSE-MIT.md](LICENSE-MIT.md).
