@@ -1,13 +1,7 @@
-![llama-swap header image](docs/assets/hero4.webp)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/mostlygeek/llama-swap/total)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mostlygeek/llama-swap/go-ci.yml)
-![GitHub Repo stars](https://img.shields.io/github/stars/mostlygeek/llama-swap)
+# deciswap
 
-# llama-swap
-
-Run multiple generative AI models on your machine and hot-swap between them on demand. llama-swap works with any OpenAI and Anthropic API compatible server and is used by thousands of people to power their local AI workflows.
-
-Built in Go for performance and simplicity, llama-swap has zero dependencies and is incredibly easy to set up. Get started in minutes - just one binary and one configuration file.
+A fork of [llama-swap](https://github.com/mostlygeek/llama-swap) that adds
+decision-model routing and a hardened admin and API-key layer.
 
 ## Fork additions
 
@@ -19,6 +13,34 @@ This fork adds:
 - **Admin account, 2FA, and scoped API keys.** Set up an admin account with
   TOTP and recovery codes, create keys limited to specific models or selectors,
   and edit the config from the admin UI. See the [API keys and auth guide](docs/kb/guides/api-integration/api-keys-and-auth.md).
+
+## License
+
+This fork is distributed under the GNU General Public License v3.0 (see
+[LICENSE.md](LICENSE.md)).
+
+It is derived from [llama-swap](https://github.com/mostlygeek/llama-swap),
+Copyright (c) 2024 Benson Wong, which was released under the MIT License. The
+original MIT license text is preserved in [LICENSE-MIT.md](LICENSE-MIT.md).
+
+---
+
+## Upstream README
+
+The section below is the original
+[llama-swap](https://github.com/mostlygeek/llama-swap) README, included for
+reference. Fork-specific behavior is described above.
+
+![llama-swap header image](docs/assets/hero4.webp)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/mostlygeek/llama-swap/total)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mostlygeek/llama-swap/go-ci.yml)
+![GitHub Repo stars](https://img.shields.io/github/stars/mostlygeek/llama-swap)
+
+# llama-swap
+
+Run multiple generative AI models on your machine and hot-swap between them on demand. llama-swap works with any OpenAI and Anthropic API compatible server and is used by thousands of people to power their local AI workflows.
+
+Built in Go for performance and simplicity, llama-swap has zero dependencies and is incredibly easy to set up. Get started in minutes - just one binary and one configuration file.
 
 ## Features:
 
@@ -415,11 +437,3 @@ Any OpenAI compatible server would work. llama-swap was originally designed for 
 
 For Python based inference servers like vllm or tabbyAPI it is recommended to run them via podman or docker. This provides clean environment isolation as well as responding correctly to `SIGTERM` signals for proper shutdown.
 
-## License
-
-This fork is distributed under the GNU General Public License v3.0 (see
-[LICENSE.md](LICENSE.md)).
-
-It is derived from [llama-swap](https://github.com/mostlygeek/llama-swap),
-Copyright (c) 2024 Benson Wong, which was released under the MIT License. The
-original MIT license text is preserved in [LICENSE-MIT.md](LICENSE-MIT.md).
