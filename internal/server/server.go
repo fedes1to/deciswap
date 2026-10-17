@@ -76,6 +76,12 @@ type Server struct {
 	// text. It is bounded and TTL-limited; a hot config reload rebuilds it.
 	decisions *decisionCache
 
+	// sessions holds sticky/adaptive routing state keyed by selector and the
+	// client's session header. deciderCalls tracks in-flight System One calls
+	// so a sticky unload cannot stop a decider another request is using.
+	sessions     *selectorSessionStore
+	deciderCalls *deciderInflight
+
 	mux     *http.ServeMux
 	handler http.Handler
 
@@ -244,6 +250,8 @@ func New(cfg config.Config, logs *logmon.Group, perfMon *perf.Monitor, st store.
 		perf:          perfMon,
 		inflight:      newInflightTracker(),
 		decisions:     newDecisionCache(decisionCacheSize, decisionCacheTTL),
+		sessions:      newSelectorSessionStore(sessionStoreMax),
+		deciderCalls:  newDeciderInflight(),
 		metrics:       newMetricsMonitor(logs.ProxyLogs, cfg.MetricsMaxInMemory, cfg.CaptureBuffer, st),
 		store:         st,
 		build:         build,
@@ -442,6 +450,7 @@ func (s *Server) routes() {
 	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
 	mux.Handle("POST /api/models/unload/{model...}", apiChain.ThenFunc(s.handleAPIUnloadModel))
 	mux.Handle("GET /api/profiles", apiChain.ThenFunc(s.handleAPIProfiles))
+	mux.Handle("POST /api/decision/refresh", apiChain.ThenFunc(s.handleAPIDecisionRefresh))
 	mux.Handle("PUT /api/profiles/active", apiChain.ThenFunc(s.handleAPIActiveProfile))
 	mux.Handle("POST /api/inflight/{id}/cancel", apiChain.ThenFunc(s.handleAPICancelInflight))
 	mux.Handle("GET /api/events", apiChain.ThenFunc(s.handleAPIEvents))

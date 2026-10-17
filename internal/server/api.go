@@ -561,3 +561,41 @@ func (s *Server) handleUpstream(w http.ResponseWriter, r *http.Request) {
 		swaputil.SendResponse(w, r, http.StatusNotFound, "no router for model "+modelID)
 	}
 }
+
+// handleAPIDecisionRefresh clears routing state for one decision selector.
+// With a session it forces the next request in that session to ask the
+// decider again; without one it drops every session of the selector. Clients
+// that cannot call this endpoint can send the selector's refresh header
+// instead (X-Route-Refresh by default).
+func (s *Server) handleAPIDecisionRefresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Selector string `json:"selector"`
+		Session  string `json:"session"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		swaputil.SendResponse(w, r, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	selector, ok := s.cfg.Selectors[req.Selector]
+	if !ok {
+		swaputil.SendResponse(w, r, http.StatusNotFound, "unknown selector")
+		return
+	}
+	if selector.Strategy != config.SelectorStrategyDecision {
+		swaputil.SendResponse(w, r, http.StatusBadRequest, "selector is not a decision selector")
+		return
+	}
+	if s.sessions == nil {
+		swaputil.SendResponse(w, r, http.StatusServiceUnavailable, "session routing is not available")
+		return
+	}
+
+	count := s.sessions.refresh(req.Selector, req.Session, selector.Settings.SessionTTL)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"selector":  req.Selector,
+		"session":   req.Session,
+		"refreshed": count,
+		"all":       req.Session == "",
+	})
+}

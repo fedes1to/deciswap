@@ -68,9 +68,11 @@ func (s *stubRouter) RunningStatus() map[string]process.Status {
 	return out
 }
 func (s *stubRouter) Unload(timeout time.Duration, models ...string) {
-	s.unloadCalls.Add(1)
+	// Write the observable fields before the atomic Add: tests wait on
+	// unloadCalls and then read them, and the Add releases those writes.
 	s.unloadTimeout = timeout
 	s.unloadModels = append([]string(nil), models...)
+	s.unloadCalls.Add(1)
 }
 func (s *stubRouter) ProcessLogger(modelID string) (*logmon.Monitor, bool) {
 	if s.loggers != nil {
@@ -97,16 +99,19 @@ func newTestServerWithConfig(cfg config.Config, local router.LocalRouter, peer r
 		panic(err)
 	}
 	s := &Server{
-		cfg:         cfg,
-		logs:        logs,
-		inflight:    newInflightTracker(),
-		metrics:     newMetricsMonitor(proxylog, 0, 0, st),
-		store:       st,
-		capcompat:   capcompat.New(st.Cache(), proxylog),
-		local:       local,
-		peer:        peer,
-		shutdownCtx: ctx,
-		shutdownFn:  cancel,
+		cfg:          cfg,
+		logs:         logs,
+		inflight:     newInflightTracker(),
+		metrics:      newMetricsMonitor(proxylog, 0, 0, st),
+		store:        st,
+		capcompat:    capcompat.New(st.Cache(), proxylog),
+		decisions:    newDecisionCache(decisionCacheSize, decisionCacheTTL),
+		sessions:     newSelectorSessionStore(sessionStoreMax),
+		deciderCalls: newDeciderInflight(),
+		local:        local,
+		peer:         peer,
+		shutdownCtx:  ctx,
+		shutdownFn:   cancel,
 	}
 	s.routes()
 	return s

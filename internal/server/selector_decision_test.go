@@ -142,11 +142,11 @@ func TestSelector_DecisionCacheBoundsAndExpires(t *testing.T) {
 	b := newDecisionKey("auto", "b")
 	d := newDecisionKey("auto", "d")
 
-	c.put(a, "general", 0.9)
-	c.put(b, "coding", 0.7)
+	c.put(a, "general", 0.9, nil)
+	c.put(b, "coding", 0.7, nil)
 	_, ok := c.get(a) // touch a so b becomes least recently used
 	require.True(t, ok)
-	c.put(d, "security", 0.8)
+	c.put(d, "security", 0.8, nil)
 
 	assert.Len(t, c.entries, 2, "cache stays at its bound")
 	_, ok = c.get(b)
@@ -351,8 +351,8 @@ func TestSelector_DecisionCacheHitKeepsConfidence(t *testing.T) {
 	env := newDecisionTestEnv(t, systemOneAnswer("coding", 0.9))
 	selector := env.server.cfg.Selectors["auto"]
 
-	first := env.server.decide(context.Background(), "auto", selector, "cache me")
-	second := env.server.decide(context.Background(), "auto", selector, "cache me")
+	first := env.server.decide(context.Background(), "auto", selector, "cache me", false)
+	second := env.server.decide(context.Background(), "auto", selector, "cache me", false)
 
 	assert.False(t, first.cacheHit)
 	assert.True(t, second.cacheHit)

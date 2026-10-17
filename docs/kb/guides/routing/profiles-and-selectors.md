@@ -3,7 +3,7 @@ title: Profiles and selectors
 summary: Switch model sets at runtime with profiles, or resolve a virtual model ID per request with selectors, including automatic routing by a decision model.
 category: guides
 tags: [profiles, selectors, aliases, routing, virtual-models, decision, auto-routing]
-config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets, selectors.*.routes, selectors.*.settings.decider, selectors.*.settings.default, selectors.*.settings.minConfidence, selectors.*.settings.timeout]
+config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets, selectors.*.routes, selectors.*.settings.decider, selectors.*.settings.default, selectors.*.settings.minConfidence, selectors.*.settings.timeout, selectors.*.settings.mode, selectors.*.settings.sessionHeader, selectors.*.settings.sessionTTL, selectors.*.settings.refreshHeader, selectors.*.settings.unloadDecider, selectors.*.settings.switchMargin, selectors.*.settings.switchConfidence, selectors.*.settings.minDwell]
 updated: 2026-08-25
 ---
 
@@ -148,6 +148,61 @@ exceeding `timeout`, a malformed answer, an unknown label, or a confidence below
 - `X-Routed-Model` — the model the request was sent to
 - `X-Routed-Label` — the chosen label, or `default`
 - `X-Routed-Reason` — present only on fallback (`timeout`, `low-confidence`, ...)
+
+### Session modes
+
+By default every request is decided on its own. Two stateful modes keep a
+conversation on one model instead. Both need a stable session key in a request
+header; `X-Session-ID` is the default, and requests without it fall back to
+per-request decisions.
+
+**`sticky`** asks the decider only on the first request of a session, then
+routes every later turn to the same target. Set `unloadDecider: true` to stop
+the decider process after that first decision; the next new session starts it
+again. A client can force a new decision with the refresh header
+(`X-Route-Refresh: 1`) or by calling the API:
+
+```console
+$ curl -X POST http://localhost:8080/api/decision/refresh     -H 'Content-Type: application/json' \
+    -d '{"selector":"auto","session":"chat-42"}'
+```
+
+Omitting `session` drops every session of that selector.
+
+**`adaptive`** asks the decider every turn, but keeps the current target unless
+the new route wins by `switchMargin` and reaches `switchConfidence`, and the
+session has been on its current target for at least `minDwell`. The guardrails
+matter: each switch discards the target's prefix cache and can cold-start a
+multi-gigabyte model, so a single borderline turn must not move the session.
+The decider stays resident in this mode.
+
+```yaml
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      fast:     {model: lfm, description: "short, easy, latency matters"}
+      decisive: {model: swift, description: "hard reasoning and math"}
+      smart:    {model: flash, description: "code and long documents"}
+      general:  {model: int5, description: "everything else"}
+    settings:
+      decider: d1
+      default: int5
+      mode: adaptive           # or sticky
+      sessionHeader: X-Session-ID
+      sessionTTL: 1h
+      switchMargin: 0.25       # adaptive only
+      switchConfidence: 0.6    # adaptive only
+      minDwell: 2m             # adaptive only
+      # unloadDecider: true    # sticky only
+```
+
+Each routed response carries `X-Routed-Session`: `decided` for the first
+decision, `pinned` when the session reused its target, `switched` when
+adaptive moved it, and `unchanged` when a decider failure left it in place.
+
+Only one large target fits on two GPUs, so sessions pinned to different models
+will still evict each other; the pin survives, the reload does not.
 
 **What goes wrong.**
 

@@ -163,6 +163,54 @@ selectors:
 			wantErr: "minConfidence must be between 0 and 1",
 		},
 		{
+			name: "unknown mode",
+			config: `
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings: { decider: kev, default: fable, mode: sometimes }
+`,
+			wantErr: "settings.mode",
+		},
+		{
+			name: "sessionTTL zero",
+			config: `
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings: { decider: kev, default: fable, mode: sticky, sessionTTL: 0s }
+`,
+			wantErr: "sessionTTL must be greater than 0",
+		},
+		{
+			name: "switchMargin above one",
+			config: `
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings: { decider: kev, default: fable, mode: adaptive, switchMargin: 1.5 }
+`,
+			wantErr: "switchMargin must be between 0 and 1",
+		},
+		{
+			name: "unloadDecider only for sticky",
+			config: `
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings: { decider: kev, default: fable, mode: adaptive, unloadDecider: true }
+`,
+			wantErr: "unloadDecider is only valid",
+		},
+		{
 			name: "timeout zero",
 			config: `
 selectors:
@@ -204,6 +252,47 @@ selectors:
 	assert.Equal(t, []string{"fable", "opus"}, auto.Targets, "targets are derived, sorted and deduplicated")
 	assert.Equal(t, 5*time.Second, auto.Settings.Timeout, "timeout defaults to 5s")
 	assert.Equal(t, "writing", auto.Routes["general"].Description)
+	assert.Equal(t, SelectorModeRequest, auto.Settings.Mode)
+	assert.Equal(t, DefaultSessionHeader, auto.Settings.SessionHeader)
+	assert.Equal(t, DefaultSessionTTL, auto.Settings.SessionTTL)
+	assert.Equal(t, DefaultRefreshHeader, auto.Settings.RefreshHeader)
+	assert.Equal(t, DefaultSwitchMargin, auto.Settings.SwitchMargin)
+	assert.Equal(t, DefaultSwitchConfidence, auto.Settings.SwitchConfidence)
+	assert.Equal(t, DefaultMinDwell, auto.Settings.MinDwell)
+}
+
+func TestConfig_SelectorDecision_SessionModesAccepted(t *testing.T) {
+	cfg, err := LoadConfigFromReader(strings.NewReader(decisionBaseModels + `
+selectors:
+  sticky:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings:
+      decider: kev
+      default: fable
+      mode: sticky
+      unloadDecider: true
+  adaptive:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings:
+      decider: kev
+      default: fable
+      mode: adaptive
+      switchMargin: 0.3
+      switchConfidence: 0.7
+      minDwell: 90s
+`))
+	require.NoError(t, err)
+	sticky := cfg.Selectors["sticky"]
+	assert.Equal(t, SelectorModeSticky, sticky.Settings.Mode)
+	assert.True(t, sticky.Settings.UnloadDecider)
+	adaptive := cfg.Selectors["adaptive"]
+	assert.Equal(t, SelectorModeAdaptive, adaptive.Settings.Mode)
+	assert.Equal(t, 0.3, adaptive.Settings.SwitchMargin)
+	assert.Equal(t, 90*time.Second, adaptive.Settings.MinDwell)
 }
 
 func TestConfig_SelectorDecision_ReloadRoundTrip(t *testing.T) {

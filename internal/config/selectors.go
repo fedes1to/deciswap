@@ -16,9 +16,29 @@ const (
 	SelectorStrategyDecision  = "decision"
 )
 
+// Decision selector session modes. "request" is the original stateless
+// behaviour; "sticky" decides once per session and pins the target;
+// "adaptive" re-decides each turn but keeps the current target unless the new
+// classification is materially different.
+const (
+	SelectorModeRequest  = "request"
+	SelectorModeSticky   = "sticky"
+	SelectorModeAdaptive = "adaptive"
+)
+
 // DefaultDecisionTimeout is the decider call deadline used when a decision
 // selector does not set settings.timeout.
 const DefaultDecisionTimeout = 5 * time.Second
+
+// Defaults for session-aware decision selectors.
+const (
+	DefaultSessionHeader    = "X-Session-ID"
+	DefaultSessionTTL       = time.Hour
+	DefaultRefreshHeader    = "X-Route-Refresh"
+	DefaultSwitchMargin     = 0.25
+	DefaultSwitchConfidence = 0.60
+	DefaultMinDwell         = 2 * time.Minute
+)
 
 // SelectorSettings contains strategy-specific selector settings.
 type SelectorSettings struct {
@@ -28,6 +48,17 @@ type SelectorSettings struct {
 	MinConfidence float64       `yaml:"minConfidence" json:"minConfidence"`
 	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
 	Instructions  string        `yaml:"instructions" json:"instructions"`
+
+	// Session-aware decision routing. Mode is request (default), sticky or
+	// adaptive. The header names are matched case-insensitively by net/http.
+	Mode             string        `yaml:"mode,omitempty" json:"mode,omitempty"`
+	SessionHeader    string        `yaml:"sessionHeader,omitempty" json:"sessionHeader,omitempty"`
+	SessionTTL       time.Duration `yaml:"sessionTTL,omitempty" json:"sessionTTL,omitempty"`
+	RefreshHeader    string        `yaml:"refreshHeader,omitempty" json:"refreshHeader,omitempty"`
+	UnloadDecider    bool          `yaml:"unloadDecider,omitempty" json:"unloadDecider,omitempty"`
+	SwitchMargin     float64       `yaml:"switchMargin,omitempty" json:"switchMargin,omitempty"`
+	SwitchConfidence float64       `yaml:"switchConfidence,omitempty" json:"switchConfidence,omitempty"`
+	MinDwell         time.Duration `yaml:"minDwell,omitempty" json:"minDwell,omitempty"`
 }
 
 // SelectorRoute is one choice a decision selector can make. The label is the
@@ -59,8 +90,18 @@ type SelectorConfig struct {
 func (c *SelectorConfig) UnmarshalYAML(value *yaml.Node) error {
 	type rawSelectorConfig SelectorConfig
 	defaults := rawSelectorConfig{
-		Targets:  []string{},
-		Settings: SelectorSettings{Spillover: 1, Timeout: DefaultDecisionTimeout},
+		Targets: []string{},
+		Settings: SelectorSettings{
+			Spillover:        1,
+			Timeout:          DefaultDecisionTimeout,
+			Mode:             SelectorModeRequest,
+			SessionHeader:    DefaultSessionHeader,
+			SessionTTL:       DefaultSessionTTL,
+			RefreshHeader:    DefaultRefreshHeader,
+			SwitchMargin:     DefaultSwitchMargin,
+			SwitchConfidence: DefaultSwitchConfidence,
+			MinDwell:         DefaultMinDwell,
+		},
 		Metadata: map[string]any{},
 	}
 	if err := value.Decode(&defaults); err != nil {
@@ -198,6 +239,36 @@ func validateDecisionSelector(config Config, selectorID string, selector Selecto
 	if settings.Timeout <= 0 {
 		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.timeout must be greater than 0", selectorID)
 	}
+
+	switch settings.Mode {
+	case "", SelectorModeRequest:
+		settings.Mode = SelectorModeRequest
+	case SelectorModeSticky, SelectorModeAdaptive:
+	default:
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.mode: unknown mode %q (valid: request, sticky, adaptive)", selectorID, settings.Mode)
+	}
+	if settings.SessionHeader == "" {
+		settings.SessionHeader = DefaultSessionHeader
+	}
+	if settings.RefreshHeader == "" {
+		settings.RefreshHeader = DefaultRefreshHeader
+	}
+	if settings.SessionTTL <= 0 {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.sessionTTL must be greater than 0", selectorID)
+	}
+	if settings.SwitchMargin < 0 || settings.SwitchMargin > 1 {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.switchMargin must be between 0 and 1, got %v", selectorID, settings.SwitchMargin)
+	}
+	if settings.SwitchConfidence < 0 || settings.SwitchConfidence > 1 {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.switchConfidence must be between 0 and 1, got %v", selectorID, settings.SwitchConfidence)
+	}
+	if settings.MinDwell < 0 {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.minDwell must be >= 0", selectorID)
+	}
+	if settings.UnloadDecider && settings.Mode != SelectorModeSticky {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.unloadDecider is only valid with mode %q", selectorID, SelectorModeSticky)
+	}
+	selector.Settings = settings
 
 	targets := make([]string, 0, len(models))
 	for model := range models {

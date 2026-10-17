@@ -191,11 +191,12 @@ func newDecisionKey(selector, text string) decisionKey {
 }
 
 type decisionCacheEntry struct {
-	key        decisionKey
-	label      string
-	confidence float64
-	expires    time.Time
-	elem       *list.Element
+	key           decisionKey
+	label         string
+	confidence    float64
+	probabilities map[string]float64
+	expires       time.Time
+	elem          *list.Element
 }
 
 // decisionCache is a bounded LRU with a TTL. It is safe for concurrent use.
@@ -231,21 +232,24 @@ func (c *decisionCache) get(key decisionKey) (decisionCacheEntry, bool) {
 		return decisionCacheEntry{}, false
 	}
 	c.order.MoveToFront(entry.elem)
-	return *entry, true
+	copy := *entry
+	copy.probabilities = cloneProbabilities(entry.probabilities)
+	return copy, true
 }
 
 // put stores label for key, evicting the least recently used entry when full.
-func (c *decisionCache) put(key decisionKey, label string, confidence float64) {
+func (c *decisionCache) put(key decisionKey, label string, confidence float64, probabilities map[string]float64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if entry, ok := c.entries[key]; ok {
 		entry.label = label
 		entry.confidence = confidence
+		entry.probabilities = cloneProbabilities(probabilities)
 		entry.expires = c.now().Add(c.ttl)
 		c.order.MoveToFront(entry.elem)
 		return
 	}
-	entry := &decisionCacheEntry{key: key, label: label, confidence: confidence, expires: c.now().Add(c.ttl)}
+	entry := &decisionCacheEntry{key: key, label: label, confidence: confidence, probabilities: cloneProbabilities(probabilities), expires: c.now().Add(c.ttl)}
 	entry.elem = c.order.PushFront(entry)
 	c.entries[key] = entry
 	for len(c.entries) > c.max {
@@ -261,11 +265,15 @@ func (c *decisionCache) remove(entry *decisionCacheEntry) {
 // decisionOutcome is the result of routing one request through a decision
 // selector.
 type decisionOutcome struct {
-	target     string
-	label      string
-	reason     string
-	confidence float64
-	cacheHit   bool
+	target        string
+	label         string
+	reason        string
+	confidence    float64
+	probabilities map[string]float64
+	cacheHit      bool
+	// state is the session resolution: decided, pinned, switched, unchanged.
+	// Empty when the selector is stateless.
+	state string
 }
 
 // decisionQuestion is one System One question. Only "choice" questions are
@@ -292,29 +300,35 @@ type decisionResponse struct {
 
 // decide picks a route for a decision selector. It never fails the client
 // request: any decider failure resolves to the selector default with a reason.
-func (s *Server) decide(ctx context.Context, selectorID string, selector config.SelectorConfig, text string) decisionOutcome {
-	fallback := func(reason string) decisionOutcome {
-		return decisionOutcome{target: selector.Settings.Default, label: decisionDefaultLabel, reason: reason}
+func (s *Server) decide(ctx context.Context, selectorID string, selector config.SelectorConfig, text string, force bool) decisionOutcome {
+	fallback := func(reason string, confidence float64) decisionOutcome {
+		return decisionOutcome{target: selector.Settings.Default, label: decisionDefaultLabel, reason: reason, confidence: confidence}
 	}
 	if text == "" {
-		return fallback("no-text")
+		return fallback("no-text", 0)
 	}
 
 	key := newDecisionKey(selectorID, text)
-	if cached, ok := s.decisions.get(key); ok {
-		outcome := routeForLabel(selector, cached.label)
-		outcome.cacheHit = true
-		outcome.confidence = cached.confidence
-		return outcome
+	if !force && s.decisions != nil {
+		if cached, ok := s.decisions.get(key); ok {
+			outcome := routeForLabel(selector, cached.label)
+			outcome.cacheHit = true
+			outcome.confidence = cached.confidence
+			outcome.probabilities = cloneProbabilities(cached.probabilities)
+			return outcome
+		}
 	}
 
-	label, confidence, reason := s.askDecider(ctx, selector, text)
+	label, confidence, probabilities, reason := s.askDecider(ctx, selector, text)
 	if reason != "" {
-		return fallback(reason)
+		return fallback(reason, confidence)
 	}
-	s.decisions.put(key, label, confidence)
+	if s.decisions != nil {
+		s.decisions.put(key, label, confidence, probabilities)
+	}
 	outcome := routeForLabel(selector, label)
 	outcome.confidence = confidence
+	outcome.probabilities = cloneProbabilities(probabilities)
 	return outcome
 }
 
@@ -326,7 +340,7 @@ func routeForLabel(selector config.SelectorConfig, label string) decisionOutcome
 // askDecider sends the System One question to the decider through the local or
 // peer dispatch path and returns the chosen label and confidence. A non-empty
 // reason means the decision should fall back to the default.
-func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig, text string) (string, float64, string) {
+func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig, text string) (string, float64, map[string]float64, string) {
 	criteria := make(map[string]string, len(selector.Routes))
 	for label, route := range selector.Routes {
 		criteria[label] = route.Description
@@ -335,6 +349,11 @@ func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig,
 	if instructions == "" {
 		instructions = defaultDecisionInstructions
 	}
+	if s.deciderCalls != nil {
+		s.deciderCalls.begin(selector.Settings.Decider)
+		defer s.deciderCalls.end(selector.Settings.Decider)
+	}
+
 	payload, err := json.Marshal(decisionRequest{
 		Model: selector.Settings.Decider,
 		State: text,
@@ -343,7 +362,7 @@ func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig,
 		},
 	})
 	if err != nil {
-		return "", 0, "encode-error"
+		return "", 0, nil, "encode-error"
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, selector.Settings.Timeout)
@@ -356,7 +375,7 @@ func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig,
 	// the selector ran, and a peer decider uses its own configured key.
 	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, "/v1/systemone", bytes.NewReader(payload))
 	if err != nil {
-		return "", 0, "request-error"
+		return "", 0, nil, "request-error"
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(swaputil.SetContext(req.Context(), swaputil.ReqContextData{
@@ -365,38 +384,53 @@ func (s *Server) askDecider(ctx context.Context, selector config.SelectorConfig,
 		Metadata: make(map[string]string),
 	}))
 
+	s.logs.ProxyLogs.Debugf("selector: decider request model=%s state=%d bytes", selector.Settings.Decider, len(text))
 	rec := newDecisionRecorder()
 	s.localPeerHandler(rec, req)
+	if s.logs != nil && rec.status == http.StatusOK {
+		body := rec.body.String()
+		if len(body) > 512 {
+			body = body[:512] + "..."
+		}
+		s.logs.ProxyLogs.Debugf("selector: decider response %s", body)
+	}
 
 	if callCtx.Err() != nil {
-		return "", 0, "timeout"
+		return "", 0, nil, "timeout"
 	}
 	if rec.status != http.StatusOK {
-		return "", 0, fmt.Sprintf("decider-status-%d", rec.status)
+		return "", 0, nil, fmt.Sprintf("decider-status-%d", rec.status)
 	}
 	if rec.overflow {
-		return "", 0, "decider-response-too-large"
+		return "", 0, nil, "decider-response-too-large"
 	}
 
 	var resp decisionResponse
 	if err := json.Unmarshal(rec.body.Bytes(), &resp); err != nil {
-		return "", 0, "decider-malformed"
+		return "", 0, nil, "decider-malformed"
 	}
 	answer, ok := resp.Answers["route"]
 	if !ok {
-		return "", 0, "decider-malformed"
+		return "", 0, nil, "decider-malformed"
 	}
 	if _, known := selector.Routes[answer.Choice]; !known {
-		return "", 0, "unknown-label"
+		return "", 0, nil, "unknown-label"
 	}
 	confidence := 1.0
 	if answer.Confidence != nil {
 		confidence = *answer.Confidence
 	}
-	if confidence < selector.Settings.MinConfidence {
-		return "", confidence, "low-confidence"
+	// Some deciders serialize the choice probabilities but leave confidence
+	// at zero; the chosen label's probability is the same number.
+	if confidence <= 0 {
+		if p, ok := answer.Probabilities[answer.Choice]; ok && p > 0 {
+			confidence = p
+		}
 	}
-	return answer.Choice, confidence, ""
+	if confidence < selector.Settings.MinConfidence {
+		return "", confidence, nil, "low-confidence"
+	}
+	return answer.Choice, confidence, cloneProbabilities(answer.Probabilities), ""
 }
 
 // decisionRecorder is an in-memory http.ResponseWriter for the decider call.
@@ -452,7 +486,7 @@ func (s *Server) routeDecision(w http.ResponseWriter, r *http.Request, next http
 		}
 	}
 
-	outcome := s.decide(r.Context(), model, selector, text)
+	outcome := s.resolveDecision(r, model, selector, text)
 	if outcome.target == "" {
 		// Only reachable with a config that bypassed validation.
 		swaputil.SendResponse(w, r, http.StatusServiceUnavailable, "decision selector has no default target")
@@ -470,6 +504,13 @@ func (s *Server) routeDecision(w http.ResponseWriter, r *http.Request, next http
 	if outcome.reason != "" {
 		w.Header().Set(headerRoutedReason, outcome.reason)
 	}
-	s.logs.ProxyLogs.Infof("%s", decisionLogLine(model, outcome, time.Since(started)))
+	if outcome.state != "" {
+		w.Header().Set(headerRoutedSession, outcome.state)
+	}
+	session := ""
+	if selector.Settings.Mode != "" && selector.Settings.Mode != config.SelectorModeRequest {
+		session = sessionLogID(requestSessionID(r, selector.Settings.SessionHeader))
+	}
+	s.logs.ProxyLogs.Infof("%s session=%s state=%s", decisionLogLine(model, outcome, time.Since(started)), session, outcome.state)
 	next.ServeHTTP(w, withDecisionContext(withSelectorContext(updated, model), outcome.label))
 }

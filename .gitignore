@@ -33,3 +33,9 @@ evals/config.yaml
 *.swp
 *.swo
 *~
+
+# local runtime state
+/llama-swap-auth.db
+/config.yaml
+/runners/
+/run.sh

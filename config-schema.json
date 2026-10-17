@@ -442,11 +442,62 @@
                                 "default": "",
                                 "maxLength": 1024,
                                 "description": "For decision: overrides the instructions sent with the routing question."
+                            },
+                            "mode": {
+                                "type": "string",
+                                "enum": [
+                                    "request",
+                                    "sticky",
+                                    "adaptive"
+                                ],
+                                "default": "request",
+                                "description": "For decision: request decides per request (original behaviour); sticky decides once per session and pins the target until the session expires or is refreshed; adaptive re-decides every turn but only switches when the new route is materially better."
+                            },
+                            "sessionHeader": {
+                                "type": "string",
+                                "default": "X-Session-ID",
+                                "minLength": 1,
+                                "description": "For sticky/adaptive: request header carrying a stable conversation key. Requests without it use per-request decisions."
+                            },
+                            "sessionTTL": {
+                                "type": "string",
+                                "default": "1h0m0s",
+                                "description": "For sticky/adaptive: idle lifetime of a session's routing state (Go duration)."
+                            },
+                            "refreshHeader": {
+                                "type": "string",
+                                "default": "X-Route-Refresh",
+                                "minLength": 1,
+                                "description": "For sticky/adaptive: a request carrying this header with 1/true/yes/on forces a fresh decision for the session."
+                            },
+                            "unloadDecider": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "For sticky: stop the decider model after the session's first decision. Only valid with mode sticky."
+                            },
+                            "switchMargin": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "default": 0.25,
+                                "description": "For adaptive: required probability advantage of the new route over the current one before a switch."
+                            },
+                            "switchConfidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "default": 0.6,
+                                "description": "For adaptive: minimum probability for the new route's label (or minimum confidence when the decider returns no probabilities)."
+                            },
+                            "minDwell": {
+                                "type": "string",
+                                "default": "2m0s",
+                                "description": "For adaptive: minimum time on a target before another switch is allowed (Go duration)."
                             }
                         },
                         "additionalProperties": false,
                         "default": {},
-                        "description": "Strategy-specific settings. spillover applies to spillover selectors; decider, default, minConfidence, timeout and instructions apply to decision selectors."
+                        "description": "Strategy-specific settings. spillover applies to spillover selectors; decider, default, minConfidence, timeout, instructions and the mode/session/switch settings apply to decision selectors."
                     },
                     "name": {
                         "type": "string",
