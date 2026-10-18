@@ -73,7 +73,7 @@
   }
 
   async function save(): Promise<void> {
-    if (!confirm("Saving reloads llama-swap and restarts model processes. Continue?")) return;
+    if (!confirm("Saving reloads deciswap and restarts model processes. Continue?")) return;
     busy = true;
     try {
       const result = await saveConfig(selectedPath, content, hash);
@@ -81,7 +81,7 @@
       // Reload the listing so the editor's baseline matches what is now on disk.
       await load();
       selectFile(selectedPath);
-      setMessage(result.reloading ? "Saved. llama-swap is reloading." : "Saved.", false);
+      setMessage(result.reloading ? "Saved. deciswap is reloading." : "Saved.", false);
       conflict = false;
     } catch (cause) {
       if (cause instanceof AdminApiError && cause.status === 409) {
@@ -101,7 +101,7 @@
     <Card.Header class="px-0">
       <Card.Title class="text-base font-semibold">Configuration</Card.Title>
       <Card.Description>
-        Saving reloads llama-swap and restarts model processes. Running requests may be interrupted.
+        Saving reloads deciswap and restarts model processes. Running requests may be interrupted.
       </Card.Description>
     </Card.Header>
 

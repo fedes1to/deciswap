@@ -55,7 +55,18 @@ function getInitialThemeMode(): ThemeMode {
 // Persistent stores
 export const themeMode = persistentStore<ThemeMode>("theme-mode", getInitialThemeMode());
 export const themeName = persistentStore<ThemeName>("theme-name", "default");
-export const appTitle = persistentStore<string>("app-title", "llama-swap");
+export const appTitle = persistentStore<string>("app-title", "deciswap");
+// Existing installs keep the old brand in localStorage; move that one value
+// forward without touching a title the operator chose themselves.
+if (typeof window !== "undefined") {
+  try {
+    if (localStorage.getItem("app-title") === JSON.stringify("llama-swap")) {
+      appTitle.set("deciswap");
+    }
+  } catch (e) {
+    console.error("Error migrating stored app title", e);
+  }
+}
 
 const prefersDarkQuery = "(prefers-color-scheme: dark)";
 

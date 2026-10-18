@@ -3,7 +3,7 @@
  *
  * These are the first thing a new user reads, so they do double duty: they
  * show that the agent answers questions about *this* server, and they name
- * features most people never find. Someone who does not know llama-swap can
+ * features most people never find. Someone who does not know deciswap can
  * run several models at once, or resolve one model ID to a different model per
  * request, will never think to ask -- so the list asks for them.
  *
@@ -21,7 +21,7 @@
  */
 export const DOCS_SUGGESTIONS: string[] = [
   // The running config, read through config__get_config.
-  "What can llama-swap do that I'm not using?",
+  "What can deciswap do that I'm not using?",
   "What models are set up here?",
   "Which models stay loaded, and how much memory do they use?",
 
@@ -68,7 +68,7 @@ export const DOCS_SUGGESTIONS: string[] = [
   "How do I reach this server safely from another network?",
 
   // guides/operations/container-security
-  "How do I run llama-swap more safely in a container?",
+  "How do I run deciswap more safely in a container?",
 
   // guides/model-runtime/writing-cmd
   "What is the smallest model setup to get started?",
@@ -76,7 +76,7 @@ export const DOCS_SUGGESTIONS: string[] = [
   "Can I use a server other than llama-server?",
   "How do I set up tool use in llama-server?",
   "How do I make a model use certain GPUs?",
-  "How do I send a different model name to the server behind llama-swap?",
+  "How do I send a different model name to the server behind deciswap?",
 
   // guides/model-runtime/ttl-and-unloading
   "How does automatic model unloading work?",
@@ -92,7 +92,7 @@ export const DOCS_SUGGESTIONS: string[] = [
 
   // guides/model-runtime/troubleshooting-model-wont-load,
   // guides/connectivity/proxy-timeouts
-  "How do I make sure llama-swap knows when a model is ready?",
+  "How do I make sure deciswap knows when a model is ready?",
   "Where can I find why a model did not start?",
   "A model takes forever to start. Should I just wait longer?",
 
@@ -128,7 +128,7 @@ export const DOCS_SUGGESTIONS: string[] = [
   "What order are model names and request settings applied in?",
 
   // guides/api-integration/mcp-endpoint
-  "How do I connect an MCP app to llama-swap's help?",
+  "How do I connect an MCP app to deciswap's help?",
   "Which MCP tools can check this server's setup?",
 
   // guides/configuration/macros
@@ -136,7 +136,7 @@ export const DOCS_SUGGESTIONS: string[] = [
   "How do environment variables keep secrets out of my config?",
 
   // guides/operations/startup-preloading-and-hooks
-  "How do I load a model when llama-swap starts?",
+  "How do I load a model when deciswap starts?",
   "When should I run a command at startup?",
 
   // guides/operations/observability-storage-and-activity
@@ -173,7 +173,7 @@ export const NUMBERED_SUGGESTIONS: DocsSuggestion[] = DOCS_SUGGESTIONS.map((ques
  * Draws suggestions at random, without repeats, in ascending order.
  *
  * The draw is what makes the list a tour: a reader who comes back, or clears
- * the chat, is shown a different corner of llama-swap rather than the same
+ * the chat, is shown a different corner of deciswap rather than the same
  * four questions they already decided they did not need. The order is not part
  * of that -- four numbers going up read as a list, the same four shuffled read
  * as a mistake -- so the randomness picks which questions, not where they sit.
