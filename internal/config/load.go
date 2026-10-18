@@ -46,6 +46,7 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 		CaptureBuffer:      5,
 		GlobalTTL:          0,
 		UnloadTimeout:      DEFAULT_UNLOAD_TIMEOUT,
+		SwapTimeout:        30,
 		UI: UIConfig{Activity: UIActivityConfig{SessionID: []string{
 			"X-Session-ID",
 			"X-Litellm-Session-Id",
@@ -85,6 +86,12 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 	}
 	if config.UnloadTimeout == 0 {
 		config.UnloadTimeout = DEFAULT_UNLOAD_TIMEOUT
+	}
+	if config.SwapTimeout < 0 {
+		return Config{}, fmt.Errorf("swapTimeout must be >= 0")
+	}
+	if config.SwapTimeout == 0 {
+		config.SwapTimeout = 30
 	}
 
 	if config.GlobalConcurrencyLimit < 0 {

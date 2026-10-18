@@ -176,6 +176,12 @@
             "default": 10,
             "description": "Graceful timeout in seconds when unloading a model (manual, API, or TTL expiry) before force-killing the model process. 0 uses the default of 10 seconds."
         },
+        "swapTimeout": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 30,
+            "description": "Graceful timeout in seconds for stopping the old model during a swap before force-killing its process group. 0 uses the default of 30 seconds."
+        },
         "globalConcurrencyLimit": {
             "type": "integer",
             "minimum": 0,

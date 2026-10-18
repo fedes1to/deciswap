@@ -3,7 +3,7 @@ title: Automatic model unloading with ttl
 summary: How ttl, globalTTL, unloadTimeout and Docker cmdStop interact, plus how to unload on demand.
 category: guides
 tags: [ttl, unload, vram, memory, idle, docker, container, cmd-stop]
-config_keys: [globalTTL, unloadTimeout, models.*.ttl, models.*.unloadTimeout, models.*.cmdStop]
+config_keys: [globalTTL, unloadTimeout, swapTimeout, models.*.ttl, models.*.unloadTimeout, models.*.cmdStop]
 updated: 2026-08-25
 ---
 
@@ -14,6 +14,26 @@ TTL frees the VRAM after a period of inactivity instead.
 
 Docker needs one extra setting: use `cmdStop: docker stop ${MODEL_ID}` so an
 unload stops the container, not only the local `docker run` client process.
+
+## Swap timeout and forced stops
+
+`swapTimeout` (default 30 seconds) bounds the graceful stop of the old model
+when a swap starts. When it expires, the process group is SIGKILLed so the
+incoming model can start; a model that is still starting is stopped the same
+way. Set it globally:
+
+```yaml
+swapTimeout: 30
+```
+
+Force-stop a model immediately, without the graceful window:
+
+```console
+$ curl -X POST http://localhost:8080/api/models/force-unload/qwen-coder
+$ curl -X POST http://localhost:8080/api/models/force-unload
+```
+
+The first stops one model; the second stops every local process.
 
 ## The two settings
 

@@ -192,6 +192,9 @@ type Config struct {
 	Performance        PerformanceConfig `yaml:"performance"`
 	GlobalTTL          int               `yaml:"globalTTL"`
 	UnloadTimeout      int               `yaml:"unloadTimeout"`
+	// SwapTimeout bounds the graceful stop of the old model during a swap.
+	// When it expires the process group is SIGKILLed so the new model can start.
+	SwapTimeout int `yaml:"swapTimeout"`
 
 	Models    map[string]ModelConfig    `yaml:"models"` /* key is model ID */
 	Profiles  map[string]ProfileConfig  `yaml:"profiles"`

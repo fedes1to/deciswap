@@ -727,3 +727,22 @@ func TestBaseRouter_Shutdown_StopsAllProcesses(t *testing.T) {
 		t.Errorf("second Shutdown returned nil, want error")
 	}
 }
+
+// TestBaseRouter_SwapStopUsesSwapTimeout ensures a swap bounds the old
+// model's graceful stop by swapTimeout, not by the much larger startup
+// healthCheckTimeout. A model that is still starting is stopped the same way.
+func TestBaseRouter_SwapStopUsesSwapTimeout(t *testing.T) {
+	old := newFakeProcess("old")
+	old.markReady()
+	next := newFakeProcess("next")
+	next.autoReady = true
+
+	conf := config.Config{HealthCheckTimeout: 600, SwapTimeout: 7}
+	b := newTestBaseWithConfig(t, conf, map[string]process.Process{"old": old, "next": next}, &stubPlanner{})
+	b.StartSwap("next", []string{"old"})
+	waitSignal(t, old.stopStarted, "old.stopStarted")
+
+	if got := old.lastStopTimeout(); got != 7*time.Second {
+		t.Fatalf("stop timeout=%v want 7s (swapTimeout, not healthCheckTimeout)", got)
+	}
+}

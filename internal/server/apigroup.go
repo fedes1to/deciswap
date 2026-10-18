@@ -714,3 +714,32 @@ func cancelAll(cancels []context.CancelFunc) {
 		cancels[i]()
 	}
 }
+
+// forceStopTimeout is deliberately tiny: it skips the graceful window and
+// makes Process.Stop SIGKILL the process group on the first timer tick.
+const forceStopTimeout = time.Nanosecond
+
+// handleAPIForceUnloadAll stops every running local process without waiting
+// for a graceful shutdown.
+func (s *Server) handleAPIForceUnloadAll(w http.ResponseWriter, r *http.Request) {
+	s.local.Unload(forceStopTimeout)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"msg": "ok", "forced": "true"})
+}
+
+// handleAPIForceUnloadModel force-stops one named local process.
+func (s *Server) handleAPIForceUnloadModel(w http.ResponseWriter, r *http.Request) {
+	requested := strings.TrimPrefix(r.PathValue("model"), "/")
+	realName, found := s.cfg.RealModelName(requested)
+	if !found {
+		swaputil.SendResponse(w, r, http.StatusNotFound, "model not found")
+		return
+	}
+	if !s.local.Handles(realName) {
+		swaputil.SendResponse(w, r, http.StatusNotFound, "no local server found for requested model")
+		return
+	}
+	s.local.Unload(forceStopTimeout, realName)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"msg": "ok", "forced": "true", "model": realName})
+}

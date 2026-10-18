@@ -241,14 +241,14 @@ func (b *baseRouter) trackedServe(modelID string, p process.Process) http.Handle
 }
 
 func (b *baseRouter) doSwap(modelID string, toStop []string) {
-	timeout := b.healthCheckTimeout()
+	stopTimeout := b.swapTimeout()
 
 	var wg sync.WaitGroup
 	for _, mID := range toStop {
 		wg.Add(1)
 		go func(p process.Process, id string) {
 			defer wg.Done()
-			if err := p.Stop(timeout); err != nil {
+			if err := p.Stop(stopTimeout); err != nil {
 				b.logger.Warnf("%s: stopping %s failed: %v", b.name, id, err)
 			}
 		}(b.processes[mID], mID)
@@ -262,7 +262,7 @@ func (b *baseRouter) doSwap(modelID string, toStop []string) {
 	// process nobody was ever going to start (issue #946). EnsureReady makes
 	// the same decision inside the process, where the state is owned.
 	target := b.processes[modelID]
-	err := target.EnsureReady(b.shutdownCtx, timeout)
+	err := target.EnsureReady(b.shutdownCtx, b.healthCheckTimeout())
 	if err != nil && b.shutdownCtx.Err() == nil {
 		// Quiet during shutdown: every in-flight swap fails at once there, and
 		// that is expected rather than worth a warning per model.
@@ -327,6 +327,17 @@ func (b *baseRouter) handleShutdown(req shutdownReq) {
 	b.procCancel()
 
 	req.respond <- nil
+}
+
+// swapTimeout bounds the graceful stop of the old model when a swap starts.
+// Once it expires Process.Stop SIGKILLs the process group, which also covers a
+// model that is still starting: it cannot hold the incoming model hostage.
+func (b *baseRouter) swapTimeout() time.Duration {
+	t := time.Duration(b.config.SwapTimeout) * time.Second
+	if t <= 0 {
+		return 30 * time.Second
+	}
+	return t
 }
 
 func (b *baseRouter) healthCheckTimeout() time.Duration {
