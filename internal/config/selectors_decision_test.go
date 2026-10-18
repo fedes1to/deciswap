@@ -211,6 +211,18 @@ selectors:
 			wantErr: "unloadDecider is only valid",
 		},
 		{
+			name: "selector context negative",
+			config: `
+selectors:
+  auto:
+    strategy: decision
+    routes:
+      general: { model: fable }
+    settings: { decider: kev, default: fable, context: -1 }
+`,
+			wantErr: "settings.context must be >= 0",
+		},
+		{
 			name: "timeout zero",
 			config: `
 selectors:

@@ -493,6 +493,12 @@
                                 "type": "string",
                                 "default": "2m0s",
                                 "description": "For adaptive: minimum time on a target before another switch is allowed (Go duration)."
+                            },
+                            "context": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 0,
+                                "description": "Context length advertised for the selector. 0 derives the smallest context among its targets."
                             }
                         },
                         "additionalProperties": false,

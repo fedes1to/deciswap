@@ -59,6 +59,10 @@ type SelectorSettings struct {
 	SwitchMargin     float64       `yaml:"switchMargin,omitempty" json:"switchMargin,omitempty"`
 	SwitchConfidence float64       `yaml:"switchConfidence,omitempty" json:"switchConfidence,omitempty"`
 	MinDwell         time.Duration `yaml:"minDwell,omitempty" json:"minDwell,omitempty"`
+
+	// Context overrides the context length advertised for a selector. Zero
+	// means "derive it": the smallest context among the selector's targets.
+	Context int `yaml:"context,omitempty" json:"context,omitempty"`
 }
 
 // SelectorRoute is one choice a decision selector can make. The label is the
@@ -264,6 +268,9 @@ func validateDecisionSelector(config Config, selectorID string, selector Selecto
 	}
 	if settings.MinDwell < 0 {
 		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.minDwell must be >= 0", selectorID)
+	}
+	if settings.Context < 0 {
+		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.context must be >= 0", selectorID)
 	}
 	if settings.UnloadDecider && settings.Mode != SelectorModeSticky {
 		return SelectorConfig{}, fmt.Errorf("selectors.%s.settings.unloadDecider is only valid with mode %q", selectorID, SelectorModeSticky)

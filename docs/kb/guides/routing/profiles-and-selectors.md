@@ -3,7 +3,7 @@ title: Profiles and selectors
 summary: Switch model sets at runtime with profiles, or resolve a virtual model ID per request with selectors, including automatic routing by a decision model.
 category: guides
 tags: [profiles, selectors, aliases, routing, virtual-models, decision, auto-routing]
-config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets, selectors.*.routes, selectors.*.settings.decider, selectors.*.settings.default, selectors.*.settings.minConfidence, selectors.*.settings.timeout, selectors.*.settings.mode, selectors.*.settings.sessionHeader, selectors.*.settings.sessionTTL, selectors.*.settings.refreshHeader, selectors.*.settings.unloadDecider, selectors.*.settings.switchMargin, selectors.*.settings.switchConfidence, selectors.*.settings.minDwell]
+config_keys: [profiles, profiles.*.pins, selectors, selectors.*.strategy, selectors.*.targets, selectors.*.routes, selectors.*.settings.decider, selectors.*.settings.default, selectors.*.settings.minConfidence, selectors.*.settings.timeout, selectors.*.settings.mode, selectors.*.settings.sessionHeader, selectors.*.settings.sessionTTL, selectors.*.settings.refreshHeader, selectors.*.settings.unloadDecider, selectors.*.settings.switchMargin, selectors.*.settings.switchConfidence, selectors.*.settings.minDwell, selectors.*.settings.context]
 updated: 2026-08-25
 ---
 
@@ -196,6 +196,10 @@ selectors:
       minDwell: 2m             # adaptive only
       # unloadDecider: true    # sticky only
 ```
+
+A selector advertises the **smallest** context among its targets by default,
+so a virtual ID never promises more room than the model it may pick. Set
+`settings.context` to advertise a fixed value instead.
 
 Each routed response carries `X-Routed-Session`: `decided` for the first
 decision, `pinned` when the session reused its target, `switched` when

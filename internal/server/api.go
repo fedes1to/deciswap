@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -131,6 +132,29 @@ func filterCappedMetadata(md map[string]any) map[string]any {
 		return nil
 	}
 	return filtered
+}
+
+// selectorContext returns the smallest context among a selector's targets,
+// so a virtual model never advertises more room than the model it can pick.
+// settings.context overrides it; 0 means derive.
+func (s *Server) selectorContext(ctx context.Context, selector config.SelectorConfig) int {
+	minContext := 0
+	for _, target := range selector.Targets {
+		mc, realName, local := s.cfg.FindConfig(target)
+		ctxLen := 0
+		if local {
+			ctxLen = mc.Capabilities.Context
+		}
+		if ctxLen == 0 && s.capcompat != nil {
+			if caps, ok := s.capcompat.Lookup(ctx, realName); ok {
+				ctxLen = caps.Context
+			}
+		}
+		if ctxLen > 0 && (minContext == 0 || ctxLen < minContext) {
+			minContext = ctxLen
+		}
+	}
+	return minContext
 }
 
 // handleListModels serves the OpenAI-compatible model listing: local models
@@ -290,12 +314,16 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 				delete(internalMetadata, "default")
 			}
 		}
+		selectorCaps := config.ModelCapConfig{Context: selector.Settings.Context}
+		if selectorCaps.Context == 0 {
+			selectorCaps.Context = s.selectorContext(r.Context(), selector)
+		}
 		data = append(data, newRecord(
 			selectorID,
 			selector.Name,
 			selector.Description,
 			selector.Metadata,
-			config.ModelCapConfig{},
+			selectorCaps,
 			status,
 			internalMetadata,
 		))
