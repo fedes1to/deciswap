@@ -39,3 +39,10 @@ evals/config.yaml
 /config.yaml
 /runners/
 /run.sh
+
+# Machine-specific split configuration (edited via Admin -> Config)
+/config.d/
+/config.yaml.*
+
+# Local support script for the d1-3B CPU/GPU deciders
+/scripts/d1_3b_server.py

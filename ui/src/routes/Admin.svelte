@@ -9,6 +9,7 @@
   import { adminSession, refreshAdminSession } from "../stores/admin";
 
   let loading = $state(true);
+  let tab = $state("security");
 
   onMount(async () => {
     await refreshAdminSession();
@@ -16,7 +17,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-3xl space-y-4">
+<div class="mx-auto space-y-4" class:max-w-3xl={tab !== "config"} class:max-w-none={tab === "config"}>
   {#if loading && $adminSession === null}
     <p class="text-muted-foreground text-sm">Loading admin session…</p>
   {:else if $adminSession?.setupRequired}
@@ -27,7 +28,7 @@
     <div class="flex items-center justify-between gap-2">
       <p class="text-muted-foreground text-sm">Signed in as <span class="font-medium text-foreground">{$adminSession.username}</span></p>
     </div>
-    <Tabs value="security">
+    <Tabs bind:value={tab}>
       <TabsList variant="line">
         <TabsTrigger value="security">Security</TabsTrigger>
         <TabsTrigger value="keys">API Keys</TabsTrigger>

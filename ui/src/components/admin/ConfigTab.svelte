@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import ConfigEditor from "./ConfigEditor.svelte";
   import { Label } from "$lib/components/ui/label/index.js";
   import { AdminApiError, listConfigFiles, saveConfig, validateConfig, type ConfigFile } from "../../lib/adminApi";
   import { adminErrorMessage } from "../../stores/admin";
@@ -120,23 +120,21 @@
             onchange={(e) => selectFile(e.currentTarget.value)}
           >
             {#each files as file (file.path)}
-              <option value={file.path}>{file.path} ({file.kind})</option>
+              <option value={file.path}>{file.path.split("/").pop()} — {file.path} ({file.kind})</option>
             {/each}
           </select>
         </div>
 
-        <Textarea
-          class="min-h-96 font-mono text-sm"
-          spellcheck={false}
-          bind:value={content}
-          aria-label="Configuration content"
-        />
+        <ConfigEditor bind:value={content} />
 
         {#if message}
           <p class={messageIsError ? "text-destructive text-sm" : "text-success text-sm"}>{message}</p>
         {/if}
 
         <div class="flex flex-wrap items-center gap-2">
+          <span class="text-muted-foreground text-xs tabular-nums">
+            {content.split("\n").length} lines · {content.length} bytes
+          </span>
           <Button variant="outline" onclick={validate} disabled={busy || !selectedPath}>Validate</Button>
           <Button onclick={save} disabled={busy || !selectedPath || conflict}>Save &amp; Reload</Button>
           {#if conflict || dirty}
