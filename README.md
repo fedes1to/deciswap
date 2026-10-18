@@ -7,12 +7,29 @@ decision-model routing and a hardened admin and API-key layer.
 
 This fork adds:
 
-- **Decision selectors (`auto`).** A `strategy: decision` selector asks a
-  System One decision model which specialist should handle each request, then
-  routes it to that model. See the [profiles and selectors guide](docs/kb/guides/routing/profiles-and-selectors.md#decision-let-a-model-pick-the-specialist).
+- **Decision-model routing.** A `strategy: decision` selector asks a System
+  One decision model which specialist should handle each request, then routes
+  it to that model. Routing state can be `sticky` or `adaptive` per
+  conversation, `X-Route-Refresh` forces a new decision (also available as
+  `POST /api/decision/refresh`), and decision targets are redacted for scoped
+  keys. See the [profiles and selectors guide](docs/kb/guides/routing/profiles-and-selectors.md#decision-let-a-model-pick-the-specialist).
 - **Admin account, 2FA, and scoped API keys.** Set up an admin account with
   TOTP and recovery codes, create keys limited to specific models or selectors,
-  and edit the config from the admin UI. See the [API keys and auth guide](docs/kb/guides/api-integration/api-keys-and-auth.md).
+  and edit the config from the admin UI. The web UI is gated behind the admin
+  session, `/api/admin/*` rejects legacy `apiKeys`, and the first-run setup
+  token goes to a `0600` file instead of the log. See the
+  [API keys and auth guide](docs/kb/guides/api-integration/api-keys-and-auth.md).
+- **Model lifecycle controls.** `swapTimeout` bounds the graceful stop so a
+  hung backend cannot block a swap; `POST /api/models/force-unload` and
+  force-stop UI actions kill a process immediately. Selectors advertise the
+  smallest target context, and config reloads are deduplicated by source
+  fingerprint.
+- **Web UI.** Rebranded as deciswap. Includes a full-size CodeMirror config
+  editor, launch options (command, env, proxy, TTL) on each model's Details
+  tab, stop and force-stop actions while a model is starting, and a first-run
+  admin setup screen.
+- **Licensing.** GPL-3.0 with the upstream MIT notice preserved in
+  [LICENSE-MIT.md](LICENSE-MIT.md).
 
 ## License
 
