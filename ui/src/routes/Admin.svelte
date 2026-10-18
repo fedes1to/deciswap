@@ -17,7 +17,7 @@
   });
 </script>
 
-<div class="mx-auto space-y-4" class:max-w-3xl={tab !== "config"} class:max-w-none={tab === "config"}>
+<div class="w-full space-y-4" class:max-w-3xl={tab !== "config"}>
   {#if loading && $adminSession === null}
     <p class="text-muted-foreground text-sm">Loading admin session…</p>
   {:else if $adminSession?.setupRequired}

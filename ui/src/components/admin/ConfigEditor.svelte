@@ -57,7 +57,7 @@
 <div
   bind:this={host}
   class="border-input bg-background w-full overflow-hidden rounded-md border"
-  style="height: clamp(28rem, 65vh, 52rem);"
+  style="height: clamp(36rem, 75vh, 60rem);"
 ></div>
 
 <style>
