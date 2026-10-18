@@ -96,6 +96,16 @@ func authStorePath(cfg config.Config, configPath, configDir string) string {
 
 // openAuthStore opens the auth store, falling back to an in-memory store (with a
 // warning) when the file cannot be opened.
+// adminSetupTokenPath is a root-only file next to the auth database. The
+// setup token is never written to the log stream: the UI serves /logs from
+// the same process and the service manager captures stdout.
+func adminSetupTokenPath(cfg config.Config, configPath, configDir string) string {
+	if p := authStorePath(cfg, configPath, configDir); p != "" {
+		return filepath.Join(filepath.Dir(p), "llama-swap-admin-setup-token")
+	}
+	return filepath.Join(os.TempDir(), "llama-swap-admin-setup-token")
+}
+
 func openAuthStore(cfg config.Config, configPath, configDir string) (*sqlite.Store, error) {
 	path := authStorePath(cfg, configPath, configDir)
 	st, err := sqlite.New(path)
@@ -321,8 +331,18 @@ func main() {
 		slog.Error("failed to initialise auth", "error", err)
 		os.Exit(1)
 	}
+	setupTokenPath := adminSetupTokenPath(cfg, *flagConfig, *flagConfigDir)
 	if token, ok := authSvc.SetupToken(); ok {
-		proxyLog.Infof("ADMIN SETUP TOKEN (shown once): %s  -- open /ui/ and enter it to create the admin account", token)
+		// The token must not enter the log stream: /logs is served by the same
+		// process and the dinit unit writes stdout to a file. Put it in a
+		// root-only file and log only the path.
+		if err := os.WriteFile(setupTokenPath, []byte(token+"\n"), 0o600); err != nil {
+			slog.Warn("failed to write admin setup token", "path", setupTokenPath, "error", err)
+		} else {
+			proxyLog.Infof("admin setup token written to %s (mode 0600); open /ui/ to create the admin account", setupTokenPath)
+		}
+	} else {
+		_ = os.Remove(setupTokenPath)
 	}
 	var reload, reloadIfChanged func()
 	adminDeps := server.AdminDeps{

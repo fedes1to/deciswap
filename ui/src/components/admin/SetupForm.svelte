@@ -38,7 +38,7 @@
   <Card.Header class="px-0">
     <Card.Title class="text-lg font-bold">Set up admin account</Card.Title>
     <Card.Description>
-      Enter the setup token printed in the llama-swap log at startup. It is accepted once.
+      Enter the setup token from the root-only file named in the startup log (llama-swap-admin-setup-token). It is accepted once.
     </Card.Description>
   </Card.Header>
   <form class="space-y-3" onsubmit={submit}>

@@ -214,7 +214,7 @@ $ llama-swap -reset-admin -config /path/to/config.yaml
 and every session, prints a one-line confirmation and exits 0. **API keys are
 kept.** It has to point at the same auth database the proxy uses, so pass the
 same `-config` (or `-config-dir`) you run llama-swap with. Start llama-swap
-again and run setup with the new setup token.
+again and run setup with the new setup token from `llama-swap-admin-setup-token` next to the auth database (mode 0600; the path is printed in the startup log).
 
 ## Scoped API keys
 
@@ -339,7 +339,7 @@ auth database, opened separately from the activity store:
   `-config-dir` when that is the only source given.
 - If that file cannot be opened, llama-swap logs a warning and keeps admin
   state in memory: setup, login and keys all work, but the admin account, keys
-  and sessions are gone on restart, and a new setup token is printed each time
+  and sessions are gone on restart, and a new setup token is written each time to `llama-swap-admin-setup-token` (mode 0600) beside the auth database
   (the in-memory store starts out with no admin).
 
 The store is opened once at startup and reused across config reloads, so
