@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import type { Component, ComponentType, SvelteComponent } from "svelte";
   import Router from "svelte-spa-router";
   import { wrap } from "svelte-spa-router/wrap";
@@ -20,7 +21,7 @@
     setActiveProfile,
   } from "./stores/api";
   import { initScreenWidth, initSystemThemeListener, isDarkMode, themeName, appTitle, connectionState } from "./stores/theme";
-  import { installAdminLoginRedirect, refreshAdminSession } from "./stores/admin";
+  import { adminSession, installAdminLoginRedirect, refreshAdminSession } from "./stores/admin";
   import { currentRoute } from "./stores/route";
   import { selectedPlaygroundTab, playgroundTabs } from "./stores/playground";
   import { sidebarOpen, sidebarWidth } from "./stores/sidebar";
@@ -136,7 +137,14 @@
     enableAPIEvents(true);
     checkPerformanceEnabled();
     const cleanupAdminRedirect = installAdminLoginRedirect();
-    void refreshAdminSession();
+    // A fresh server has no admin account and nothing in the UI links to the
+    // setup form, so land first-time users on it instead of an empty Activity
+    // page. Only the landing routes move; deep links are left alone.
+    void refreshAdminSession().then(() => {
+      const session = get(adminSession);
+      const landing = location.hash === "" || location.hash === "#/" || location.hash === "#/activity";
+      if (session?.setupRequired && landing) location.hash = "#/admin";
+    });
     import("./routes/Playground.svelte").then((m) => {
       PlaygroundComponent = m.default;
     });

@@ -221,7 +221,7 @@
             </Sidebar.MenuButton>
           </Sidebar.MenuItem>
 
-          {#if $adminSession?.authenticated}
+          {#if $adminSession}
             <Sidebar.MenuItem>
               <Sidebar.MenuButton isActive={isActive("/admin", $currentRoute)} tooltipContent="Admin">
                 {#snippet child({ props })}
