@@ -35,7 +35,7 @@ evals/config.yaml
 *~
 
 # local runtime state
-/llama-swap-auth.db
+/llama-swap-auth.db*
 /config.yaml
 /runners/
 /run.sh
