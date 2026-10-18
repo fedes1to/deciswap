@@ -418,6 +418,26 @@ export async function unloadSingleModel(model: string): Promise<void> {
   }
 }
 
+export async function forceUnloadAllModels(): Promise<void> {
+  const response = await fetch(apiUrl(`/api/models/force-unload`), {
+    method: "POST",
+    headers: csrfHeaders,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to force-stop models: ${response.status}`);
+  }
+}
+
+export async function forceUnloadSingleModel(model: string): Promise<void> {
+  const response = await fetch(apiUrl(`/api/models/force-unload/${encodeURIComponent(model)}`), {
+    method: "POST",
+    headers: csrfHeaders,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to force-stop model: ${response.status}`);
+  }
+}
+
 export async function cancelInflightRequest(id: string): Promise<void> {
   try {
     const response = await fetch(apiUrl(`/api/inflight/${encodeURIComponent(id)}/cancel`), {

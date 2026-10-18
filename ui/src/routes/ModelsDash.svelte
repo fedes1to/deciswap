@@ -9,6 +9,7 @@
     profiles,
     selectorModels,
     unloadAllModels,
+    forceUnloadAllModels,
   } from "../stores/api";
   import { loadingMessage, loadingPercent, statusDotColor } from "../stores/modelLoad";
   import { showUnlistedModels as showUnlisted, showCapabilityTags } from "../stores/modelDisplay";
@@ -20,10 +21,11 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Switch from "$lib/components/ui/switch/index.js";
   import * as Label from "$lib/components/ui/label/index.js";
-  import { PowerOff, Loader2, ExternalLink, SquareStack } from "@lucide/svelte";
+  import { PowerOff, OctagonX, Loader2, ExternalLink, SquareStack } from "@lucide/svelte";
   import { modelServerPath } from "../lib/modelUtils";
 
   let unloadingAll = $state(false);
+  let forcingAll = $state(false);
 
   onMount(() => {
     void fetchPlaygroundModels();
@@ -44,7 +46,7 @@
   );
 
   let readyCount = $derived($models.filter((m) => m.state === "ready").length);
-  let anyReady = $derived(readyCount > 0);
+  let anyRunning = $derived($models.some((m) => !m.peerID && m.state !== "stopped"));
 
   async function handleUnloadAll(): Promise<void> {
     unloadingAll = true;
@@ -54,6 +56,17 @@
       console.error(e);
     } finally {
       unloadingAll = false;
+    }
+  }
+
+  async function handleForceUnloadAll(): Promise<void> {
+    forcingAll = true;
+    try {
+      await forceUnloadAllModels();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      forcingAll = false;
     }
   }
 </script>
@@ -179,7 +192,7 @@
             variant="outline"
             size="sm"
             onclick={handleUnloadAll}
-            disabled={!anyReady || unloadingAll}
+            disabled={!anyRunning || unloadingAll}
           >
             {#if unloadingAll}
               <Loader2 class="size-3.5 animate-spin" />
@@ -187,6 +200,20 @@
               <PowerOff class="size-3.5" />
             {/if}
             Unload All
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onclick={handleForceUnloadAll}
+            disabled={!anyRunning || forcingAll}
+          >
+            {#if forcingAll}
+              <Loader2 class="size-3.5 animate-spin" />
+            {:else}
+              <OctagonX class="size-3.5" />
+            {/if}
+            Force Stop All
           </Button>
         </div>
       </div>
