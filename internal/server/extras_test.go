@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mostlygeek/llama-swap/internal/config"
 	"github.com/mostlygeek/llama-swap/internal/logmon"
@@ -308,6 +309,39 @@ func TestServer_HandleAPICapture(t *testing.T) {
 		s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/captures/abc", nil))
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("status = %d, want 400", w.Code)
+		}
+	})
+}
+
+func TestServer_HandleAPIForceUnload(t *testing.T) {
+	local := newStubRouter([]string{"m1"}, "")
+	s := newTestServer(local, newStubRouter(nil, ""))
+	s.cfg = config.Config{Models: map[string]config.ModelConfig{"m1": {}}}
+
+	t.Run("all", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/models/force-unload", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if local.unloadTimeout != time.Nanosecond {
+			t.Errorf("unloadTimeout = %v, want 1ns (force)", local.unloadTimeout)
+		}
+	})
+
+	t.Run("model", func(t *testing.T) {
+		local.unloadTimeout = 0
+		local.unloadModels = nil
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/models/force-unload/m1", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if local.unloadTimeout != time.Nanosecond {
+			t.Errorf("unloadTimeout = %v, want 1ns (force)", local.unloadTimeout)
+		}
+		if len(local.unloadModels) != 1 || local.unloadModels[0] != "m1" {
+			t.Errorf("unloadModels = %v, want [m1]", local.unloadModels)
 		}
 	})
 }
