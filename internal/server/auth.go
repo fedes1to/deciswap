@@ -159,6 +159,14 @@ func (s *Server) accessDenial(class routeClass, r *http.Request) (status int, me
 	if !s.authEnforced() {
 		return 0, "", false
 	}
+	if s.adminConfigured() {
+		// A session cookie is the only credential the admin account accepts,
+		// and a browser cannot turn a Basic challenge into one. Challenging
+		// anyway makes the UI pop a credential dialog that nothing can
+		// satisfy; the client-side gate sends the caller to the login form
+		// instead.
+		return http.StatusUnauthorized, "unauthorized: admin login required", false
+	}
 	return http.StatusUnauthorized, "unauthorized: invalid or missing API key", true
 }
 

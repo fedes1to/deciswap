@@ -54,12 +54,18 @@ export const versionInfo = writable<VersionInfo>({
 });
 
 let apiEventSource: EventSource | null = null;
+let apiEventsGeneration = 0;
 let profileRevision = 0;
 let playgroundModelsRequest = 0;
 let playgroundModelsFetch: Promise<Model[]> | null = null;
 let playgroundModelsRefreshQueued = false;
 
 export function enableAPIEvents(enabled: boolean): void {
+  // Any pending reconnect timer belongs to the previous generation, so a
+  // disable (logout, gateway) cannot be undone by a retry that was already
+  // scheduled.
+  apiEventsGeneration++;
+  const generation = apiEventsGeneration;
   if (!enabled) {
     apiEventSource?.close();
     apiEventSource = null;
@@ -80,6 +86,7 @@ export function enableAPIEvents(enabled: boolean): void {
   const initialDelay = 1000; // 1 second
 
   const connect = () => {
+    if (generation !== apiEventsGeneration) return;
     apiEventSource?.close();
     apiEventSource = new EventSource(apiUrl("/api/events"));
 
@@ -113,6 +120,7 @@ export function enableAPIEvents(enabled: boolean): void {
     };
 
     apiEventSource.onerror = () => {
+      if (generation !== apiEventsGeneration) return;
       apiEventSource?.close();
       retryCount++;
       const delay = Math.min(initialDelay * Math.pow(2, retryCount - 1), 5000);

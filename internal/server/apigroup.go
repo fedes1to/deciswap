@@ -46,6 +46,56 @@ type apiModel struct {
 	LoadingMessage string `json:"loadingMessage,omitempty"`
 }
 
+// apiModelLaunch is the read-only launch configuration the model detail page
+// shows. Values are post-macro-expansion but still carry the runtime ${PORT}
+// placeholder, which is resolved when the process starts.
+type apiModelLaunch struct {
+	ID               string   `json:"id"`
+	Cmd              string   `json:"cmd"`
+	CmdStop          string   `json:"cmdStop,omitempty"`
+	Env              []string `json:"env,omitempty"`
+	Proxy            string   `json:"proxy,omitempty"`
+	CheckEndpoint    string   `json:"checkEndpoint,omitempty"`
+	TTL              int      `json:"ttl"`
+	UnloadTimeout    int      `json:"unloadTimeout"`
+	ConcurrencyLimit int      `json:"concurrencyLimit,omitempty"`
+	Aliases          []string `json:"aliases,omitempty"`
+	Unlisted         bool     `json:"unlisted,omitempty"`
+}
+
+// handleAPIModelLaunch returns a model's launch options. Aliases resolve to
+// the model they name; selectors and peer models have no local config.
+func (s *Server) handleAPIModelLaunch(w http.ResponseWriter, r *http.Request) {
+	// Launch options include env values and command lines, which routinely
+	// carry credentials. The Admin config editor already shows this data to
+	// the admin only; never hand it to any other principal.
+	if principalFrom(r.Context()).kind != principalAdmin {
+		writeAccessError(w, http.StatusForbidden, "forbidden: admin session required", false)
+		return
+	}
+	requested := strings.TrimPrefix(r.PathValue("model"), "/")
+	model, realName, found := s.cfg.FindConfig(requested)
+	if !found {
+		swaputil.SendResponse(w, r, http.StatusNotFound, "model not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(apiModelLaunch{
+		ID:               realName,
+		Cmd:              model.Cmd,
+		CmdStop:          model.CmdStop,
+		Env:              model.Env,
+		Proxy:            model.Proxy,
+		CheckEndpoint:    model.CheckEndpoint,
+		TTL:              model.UnloadAfter,
+		UnloadTimeout:    model.UnloadTimeout,
+		ConcurrencyLimit: model.ConcurrencyLimit,
+		Aliases:          model.Aliases,
+		Unlisted:         model.Unlisted,
+	})
+}
+
 type apiProfile struct {
 	ID          string            `json:"id"`
 	Description string            `json:"description"`

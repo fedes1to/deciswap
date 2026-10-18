@@ -288,3 +288,90 @@ func TestAuth_UIGateWhenAdminExists(t *testing.T) {
 	assert.NotEqual(t, http.StatusUnauthorized, w.Code)
 	assert.Empty(t, w.Header().Get("WWW-Authenticate"), "SPA gate must not trigger the Basic prompt")
 }
+
+// An admin account can only be entered with a session cookie, so a Basic
+// challenge is a dead end: browsers would pop a credential dialog that no
+// API key or password can satisfy. The UI shows its login form instead.
+func TestAuth_AdminConfiguredRejectsWithoutBasicChallenge(t *testing.T) {
+	cfg := config.Config{
+		Models: map[string]config.ModelConfig{"m1": {Cmd: "x"}},
+	}
+	s, svc := newAuthTestServer(t, cfg, "m1")
+	token, ok := svc.SetupToken()
+	require.True(t, ok)
+	_, err := svc.Setup(context.Background(), "127.0.0.1", token, "admin", "correct-horse-battery")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"logs", http.MethodGet, "/logs"},
+		{"metrics", http.MethodGet, "/metrics"},
+		{"ops api", http.MethodGet, "/api/models/launch/m1"},
+		{"model request", http.MethodPost, "/v1/chat/completions"},
+		{"model list", http.MethodGet, "/v1/models"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, httptest.NewRequest(tt.method, tt.path, nil))
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+			assert.Empty(t, w.Header().Get("WWW-Authenticate"),
+				"admin-only auth must not trigger the browser credential prompt")
+			assert.Contains(t, w.Body.String(), "admin login required")
+		})
+	}
+}
+
+// A deployment that still relies on legacy apiKeys keeps the Basic challenge:
+// a key can actually be supplied that way.
+func TestAuth_LegacyKeysKeepBasicChallenge(t *testing.T) {
+	cfg := config.Config{
+		RequiredAPIKeys: []string{"secret"},
+		Models:          map[string]config.ModelConfig{"m1": {Cmd: "x"}},
+	}
+	s, _ := newAuthTestServer(t, cfg, "m1")
+
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/logs", nil))
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, `Basic realm="llama-swap"`, w.Header().Get("WWW-Authenticate"))
+	assert.Contains(t, w.Body.String(), "invalid or missing API key")
+}
+
+// Launch options carry env values and command lines, which routinely hold
+// credentials. A legacy key that is allowed on the ops routes must still not
+// read them; only the admin session (which already reads the config) may.
+func TestAuth_ModelLaunchRequiresAdminSession(t *testing.T) {
+	cfg := config.Config{
+		RequiredAPIKeys: []string{"secret"},
+		Models: map[string]config.ModelConfig{
+			"m1": {Cmd: "serve --api-key hunter2", Env: []string{"HF_TOKEN=hf_x"}},
+		},
+	}
+	s, svc := newAuthTestServer(t, cfg, "m1")
+
+	r := httptest.NewRequest(http.MethodGet, "/api/models/launch/m1", nil)
+	r.Header.Set("Authorization", "Bearer secret")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.NotContains(t, w.Body.String(), "hf_x")
+
+	token, ok := svc.SetupToken()
+	require.True(t, ok)
+	_, err := svc.Setup(context.Background(), "127.0.0.1", token, "admin", "correct-horse-battery")
+	require.NoError(t, err)
+	session, err := svc.Login(context.Background(), "127.0.0.1", "admin", "correct-horse-battery", "")
+	require.NoError(t, err)
+
+	r = httptest.NewRequest(http.MethodGet, "/api/models/launch/m1", nil)
+	r.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: session})
+	w = httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "hf_x")
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+}

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { get } from "svelte/store";
   import type { Component, ComponentType, SvelteComponent } from "svelte";
   import Router from "svelte-spa-router";
   import { wrap } from "svelte-spa-router/wrap";
@@ -21,7 +20,8 @@
     setActiveProfile,
   } from "./stores/api";
   import { initScreenWidth, initSystemThemeListener, isDarkMode, themeName, appTitle, connectionState } from "./stores/theme";
-  import { adminSession, installAdminLoginRedirect, refreshAdminSession } from "./stores/admin";
+  import { adminSession, installAdminSessionGuard, refreshAdminSession } from "./stores/admin";
+  import AuthGate from "./components/admin/AuthGate.svelte";
   import { currentRoute } from "./stores/route";
   import { selectedPlaygroundTab, playgroundTabs } from "./stores/playground";
   import { sidebarOpen, sidebarWidth } from "./stores/sidebar";
@@ -131,20 +131,22 @@
   let PlaygroundComponent = $state<Component | null>(null);
   let HelpComponent = $state<Component | null>(null);
 
+  // The event stream is data access, so it only runs with a live admin
+  // session; the login gate renders without it.
+  $effect(() => {
+    const authenticated = $adminSession?.authenticated === true;
+    enableAPIEvents(authenticated);
+    return () => enableAPIEvents(false);
+  });
+
   onMount(() => {
     const cleanupScreenWidth = initScreenWidth();
     const cleanupSystemTheme = initSystemThemeListener();
-    enableAPIEvents(true);
     checkPerformanceEnabled();
-    const cleanupAdminRedirect = installAdminLoginRedirect();
-    // A fresh server has no admin account and nothing in the UI links to the
-    // setup form, so land first-time users on it instead of an empty Activity
-    // page. Only the landing routes move; deep links are left alone.
-    void refreshAdminSession().then(() => {
-      const session = get(adminSession);
-      const landing = location.hash === "" || location.hash === "#/" || location.hash === "#/activity";
-      if (session?.setupRequired && landing) location.hash = "#/admin";
-    });
+    const cleanupAdminRedirect = installAdminSessionGuard();
+    // The login gate renders the setup form itself while setupRequired, so the
+    // first check only has to populate the store.
+    void refreshAdminSession();
     import("./routes/Playground.svelte").then((m) => {
       PlaygroundComponent = m.default;
     });
@@ -155,12 +157,18 @@
     return () => {
       cleanupScreenWidth();
       cleanupSystemTheme();
-      enableAPIEvents(false);
       cleanupAdminRedirect();
     };
   });
 </script>
 
+{#if $adminSession === null}
+  <div class="flex min-h-screen items-center justify-center p-4">
+    <p class="text-muted-foreground text-sm">Loading…</p>
+  </div>
+{:else if !$adminSession.authenticated}
+  <AuthGate />
+{:else}
 <Tooltip.Provider>
   <Sidebar.Provider
     open={$sidebarOpen}
@@ -250,3 +258,4 @@
     </Sidebar.Inset>
   </Sidebar.Provider>
 </Tooltip.Provider>
+{/if}

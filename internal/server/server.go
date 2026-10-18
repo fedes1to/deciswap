@@ -447,6 +447,7 @@ func (s *Server) routes() {
 	mux.Handle("/audiocpp/{audioCppPath...}", apiChain.ThenFunc(s.handleAudioCpp))
 
 	// API group (API-key protected) consumed by the UI.
+	mux.Handle("GET /api/models/launch/{model...}", apiChain.ThenFunc(s.handleAPIModelLaunch))
 	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
 	mux.Handle("POST /api/models/unload/{model...}", apiChain.ThenFunc(s.handleAPIUnloadModel))
 	mux.Handle("POST /api/models/force-unload", apiChain.ThenFunc(s.handleAPIForceUnloadAll))

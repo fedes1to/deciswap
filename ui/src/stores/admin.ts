@@ -24,15 +24,15 @@ export function adminErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Sends the browser to #/admin when a non-admin API call is refused with 401 on a server that has an admin account. */
-export function installAdminLoginRedirect(): () => void {
+/** Re-reads the session when a non-admin API call is refused with 401, so the login gate takes over. */
+export function installAdminSessionGuard(): () => void {
   const originalFetch = window.fetch;
   window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await originalFetch(input, init);
     const session = get(adminSession);
     const adminConfigured = session !== null && !session.setupRequired;
     if (needsAdminLogin(requestPathname(input), response.status, adminConfigured)) {
-      window.location.hash = "#/admin";
+      void refreshAdminSession();
     }
     return response;
   }) as typeof fetch;

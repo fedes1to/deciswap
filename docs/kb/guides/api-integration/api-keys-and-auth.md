@@ -322,11 +322,25 @@ default for a fresh instance.
 
 - 401 bodies are `{"error":"..."}`. `WWW-Authenticate: Basic realm="llama-swap"`
   is added on the ops and model classes only, never on the admin API or the UI.
+  Once an admin account exists it is dropped there too: the only credential
+  the admin accepts is the session cookie, which a Basic challenge cannot
+  produce, so the rejection reads `unauthorized: admin login required` and the
+  web UI shows the login form instead of a browser credential dialog. The
+  challenge remains while a deployment relies on legacy `apiKeys` alone.
+- The web UI is gated as a whole: with an admin account configured, an
+  unauthenticated browser gets the login form (or the first-run setup form)
+  and nothing else. The SPA bundle itself is still served so the form can
+  load, but every route, model and ops call it makes answers 401 until the
+  session exists.
 - 403 bodies are `{"error":"..."}`.
 - An unsafe method (POST, PUT, PATCH, DELETE) authenticated by the session
   cookie needs `X-Requested-With: llama-swap` on any of these classes.
 - `/upstream/<model>/...` reads the model out of the path, so the same
   allowed-model rule applies there.
+- `GET /api/models/launch/<model>` is stricter than the ops class: it returns
+  the model's command line and `env`, which can contain credentials, so it
+  requires the admin session even when a legacy `apiKeys` key would pass the
+  ops gate. The response is served with `Cache-Control: no-store`.
 
 ## Where the admin state lives
 

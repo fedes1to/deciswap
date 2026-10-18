@@ -50,6 +50,21 @@ export interface Model {
   spillover?: number;
 }
 
+// Read-only launch configuration from GET /api/models/launch/{id}.
+export interface ModelLaunch {
+  id: string;
+  cmd: string;
+  cmdStop?: string;
+  env?: string[];
+  proxy?: string;
+  checkEndpoint?: string;
+  ttl?: number;
+  unloadTimeout?: number;
+  concurrencyLimit?: number;
+  aliases?: string[];
+  unlisted?: boolean;
+}
+
 export interface Profile {
   id: string;
   description: string;
