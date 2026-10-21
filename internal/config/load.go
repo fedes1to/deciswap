@@ -47,6 +47,7 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 		GlobalTTL:          0,
 		UnloadTimeout:      DEFAULT_UNLOAD_TIMEOUT,
 		SwapTimeout:        30,
+		MaxRequestBodyMB:   DEFAULT_MAX_REQUEST_BODY_MB,
 		UI: UIConfig{Activity: UIActivityConfig{SessionID: []string{
 			"X-Session-ID",
 			"X-Litellm-Session-Id",
@@ -96,6 +97,10 @@ func LoadConfigFromReader(r io.Reader) (Config, error) {
 
 	if config.GlobalConcurrencyLimit < 0 {
 		return Config{}, fmt.Errorf("globalConcurrencyLimit must be >= 0")
+	}
+
+	if config.MaxRequestBodyMB < 1 {
+		return Config{}, fmt.Errorf("maxRequestBodyMB must be >= 1")
 	}
 
 	config.UI.Activity.SessionID = normalizeHeaderNames(config.UI.Activity.SessionID)
