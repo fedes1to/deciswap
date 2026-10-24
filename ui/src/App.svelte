@@ -41,6 +41,8 @@
     "/help": AlwaysMountedStub,
     "/models": wrap({ asyncComponent: () => import("./routes/ModelsDash.svelte"), loadingComponent: RouteLoading }),
     "/models/:id": wrap({ asyncComponent: () => import("./routes/ModelDetail.svelte"), loadingComponent: RouteLoading }),
+    "/selectors": wrap({ asyncComponent: () => import("./routes/SelectorsDash.svelte"), loadingComponent: RouteLoading }),
+    "/selectors/:id": wrap({ asyncComponent: () => import("./routes/SelectorDetail.svelte"), loadingComponent: RouteLoading }),
     "/logs": wrap({ asyncComponent: () => import("./routes/LogViewer.svelte"), loadingComponent: RouteLoading }),
     "/activity": wrap({ asyncComponent: () => import("./routes/Activity.svelte"), loadingComponent: RouteLoading }),
     "/settings": wrap({ asyncComponent: () => import("./routes/Settings.svelte"), loadingComponent: RouteLoading }),
@@ -56,6 +58,7 @@
     "/playground": "Playground",
     "/help": "Help",
     "/models": "Models",
+    "/selectors": "Selectors",
     "/activity": "Activity",
     "/logs": "Logs",
     "/settings": "Settings",
@@ -82,6 +85,10 @@
     }
     if ($currentRoute === "/models") {
       return "Models";
+    }
+    if ($currentRoute.startsWith("/selectors/")) {
+      const id = $currentRoute.slice("/selectors/".length);
+      return id ? `Selectors / ${decodeURIComponent(id)}` : "Selectors";
     }
     return routeTitles[$currentRoute] ?? "Activity";
   });

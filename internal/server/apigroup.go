@@ -96,6 +96,54 @@ func (s *Server) handleAPIModelLaunch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// apiSelector is one configured selector as the selector pages show it. The
+// settings are post-default, matching what the router actually runs.
+type apiSelector struct {
+	ID          string                          `json:"id"`
+	Name        string                          `json:"name"`
+	Description string                          `json:"description"`
+	Strategy    string                          `json:"strategy"`
+	Targets     []string                        `json:"targets"`
+	Routes      map[string]config.SelectorRoute `json:"routes,omitempty"`
+	Settings    config.SelectorSettings         `json:"settings"`
+	Unlisted    bool                            `json:"unlisted"`
+	Metadata    map[string]any                  `json:"metadata,omitempty"`
+}
+
+// handleAPISelectors returns every configured selector, including unlisted
+// ones. Selector settings can name the decider and fallback models, so this is
+// admin-only like the model launch options.
+func (s *Server) handleAPISelectors(w http.ResponseWriter, r *http.Request) {
+	if principalFrom(r.Context()).kind != principalAdmin {
+		writeAccessError(w, http.StatusForbidden, "forbidden: admin session required", false)
+		return
+	}
+	ids := make([]string, 0, len(s.cfg.Selectors))
+	for id := range s.cfg.Selectors {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	selectors := make([]apiSelector, 0, len(ids))
+	for _, id := range ids {
+		selector := s.cfg.Selectors[id]
+		selectors = append(selectors, apiSelector{
+			ID:          id,
+			Name:        selector.Name,
+			Description: selector.Description,
+			Strategy:    selector.Strategy,
+			Targets:     selector.Targets,
+			Routes:      selector.Routes,
+			Settings:    selector.Settings,
+			Unlisted:    selector.Unlisted,
+			Metadata:    selector.Metadata,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]any{"selectors": selectors})
+}
+
 type apiProfile struct {
 	ID          string            `json:"id"`
 	Description string            `json:"description"`

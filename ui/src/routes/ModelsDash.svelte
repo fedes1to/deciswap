@@ -7,7 +7,6 @@
     fetchPlaygroundModels,
     models,
     profiles,
-    selectorModels,
     unloadAllModels,
     forceUnloadAllModels,
   } from "../stores/api";
@@ -278,52 +277,6 @@
               {/each}
             </div>
           {/if}
-        </Card.Content>
-      </Card.Root>
-    {/if}
-
-    {#if $selectorModels.length > 0}
-      <Card.Root class="shrink-0 gap-0 overflow-hidden py-0">
-        <Card.Header class="shrink-0 border-b px-4 py-2.5">
-          <div class="flex items-center gap-2">
-            <Card.Title class="text-sm">Selectors</Card.Title>
-            <span class="text-muted-foreground ml-auto text-xs">
-              {$selectorModels.length} {$selectorModels.length === 1 ? "selector" : "selectors"}
-            </span>
-          </div>
-        </Card.Header>
-        <Card.Content class="p-0">
-          <div class="divide-y">
-            {#each $selectorModels as selector (selector.id)}
-              <div class="hover:bg-muted/50 flex items-center gap-3 px-4 py-2.5">
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm font-medium">
-                    {selector.name ? `${selector.id} - ${selector.name}` : selector.id}
-                  </div>
-                  {#if selector.description}
-                    <div class="text-muted-foreground truncate text-xs">
-                      {selector.description}
-                    </div>
-                  {/if}
-                  <div class="text-muted-foreground flex flex-wrap items-center gap-x-1 text-xs">
-                    <span>targets:</span>
-                    {#each selector.targets ?? [] as target, i (target)}
-                      {#if i > 0}<span>,</span>{/if}
-                      <a
-                        href="/models/{encodeURIComponent(target)}"
-                        use:link
-                        class="hover:text-foreground hover:underline"
-                      >{target}</a>
-                    {/each}
-                  </div>
-                </div>
-                {#if selector.strategy === "spillover" && selector.spillover}
-                  <Tag>spillover {selector.spillover}</Tag>
-                {/if}
-                <Tag class="px-1.5 text-[0.625rem] uppercase">{selector.strategy}</Tag>
-              </div>
-            {/each}
-          </div>
         </Card.Content>
       </Card.Root>
     {/if}

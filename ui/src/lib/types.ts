@@ -65,6 +65,47 @@ export interface ModelLaunch {
   unlisted?: boolean;
 }
 
+// One choice a decision selector can make, keyed by its label in the routes
+// map.
+export interface SelectorRoute {
+  model: string;
+  description: string;
+}
+
+// Selector settings as returned by GET /api/selectors. Durations are
+// nanoseconds, matching Go's time.Duration JSON encoding. Values are the
+// effective settings after defaults, not just what the config file wrote.
+export interface SelectorSettings {
+  spillover: number;
+  decider: string;
+  default: string;
+  minConfidence: number;
+  timeout: number;
+  instructions: string;
+  mode?: string;
+  sessionHeader?: string;
+  sessionTTL?: number;
+  refreshHeader?: string;
+  unloadDecider?: boolean;
+  switchMargin?: number;
+  switchConfidence?: number;
+  minDwell?: number;
+  context?: number;
+}
+
+// Read-only selector configuration from GET /api/selectors.
+export interface SelectorConfig {
+  id: string;
+  name: string;
+  description: string;
+  strategy: string;
+  targets: string[];
+  routes?: Record<string, SelectorRoute>;
+  settings: SelectorSettings;
+  unlisted: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Profile {
   id: string;
   description: string;

@@ -15,6 +15,7 @@ import type {
   PlaygroundModelType,
   HardwareSnapshot,
   TailcatStatus,
+  SelectorConfig,
 } from "../lib/types";
 import { appendActivityFilters, type ActivityFilters } from "../lib/activityFilters";
 import { apiUrl } from "../lib/apiPath";
@@ -26,6 +27,9 @@ export const models = writable<Model[]>([]);
 export const playgroundModels = writable<Model[]>([]);
 export const profiles = writable<Profile[]>([]);
 export const activeProfile = writable<string | null>(null);
+// Full selector configs for the Selectors tab. Unlike selectorModels, this
+// includes unlisted selectors and carries every setting the router uses.
+export const selectorConfigs = writable<SelectorConfig[]>([]);
 
 // Model records used by Playground come from the OpenAI-compatible listing.
 export const profileModels = derived(
@@ -76,6 +80,7 @@ export function enableAPIEvents(enabled: boolean): void {
     playgroundModelsRequest++;
     playgroundModelsRefreshQueued = false;
     playgroundModels.set([]);
+    selectorConfigs.set([]);
     profiles.set([]);
     activeProfile.set(null);
     profileRevision++;
@@ -343,6 +348,17 @@ export function fetchPlaygroundModels(): Promise<Model[]> {
   });
   playgroundModelsFetch = currentFetch;
   return currentFetch;
+}
+
+export async function fetchSelectorConfigs(): Promise<SelectorConfig[]> {
+  const response = await fetch(apiUrl("/api/selectors"));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch selectors: ${response.status}`);
+  }
+  const body = (await response.json()) as { selectors?: SelectorConfig[] };
+  const selectors = body.selectors ?? [];
+  selectorConfigs.set(selectors);
+  return selectors;
 }
 
 export async function getActivity(params: {

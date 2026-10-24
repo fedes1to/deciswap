@@ -448,6 +448,7 @@ func (s *Server) routes() {
 
 	// API group (API-key protected) consumed by the UI.
 	mux.Handle("GET /api/models/launch/{model...}", apiChain.ThenFunc(s.handleAPIModelLaunch))
+	mux.Handle("GET /api/selectors", apiChain.ThenFunc(s.handleAPISelectors))
 	mux.Handle("POST /api/models/unload", apiChain.ThenFunc(s.handleAPIUnloadAll))
 	mux.Handle("POST /api/models/unload/{model...}", apiChain.ThenFunc(s.handleAPIUnloadModel))
 	mux.Handle("POST /api/models/force-unload", apiChain.ThenFunc(s.handleAPIForceUnloadAll))

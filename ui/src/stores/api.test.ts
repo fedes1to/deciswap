@@ -5,6 +5,7 @@ import {
   activityRevision,
   fetchPlaygroundModels,
   fetchProfiles,
+  fetchSelectorConfigs,
   fetchTailcatStatus,
   getActivity,
   getHardware,
@@ -16,6 +17,7 @@ import {
   playgroundModels,
   profileModels,
   profiles,
+  selectorConfigs,
   selectorModels,
   setActiveProfile,
   tailcatStatus,
@@ -26,6 +28,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   models.set([]);
   playgroundModels.set([]);
+  selectorConfigs.set([]);
   profiles.set([]);
   activeProfile.set(null);
   tailcatStatus.set({ enabled: false, address: "", models: [] });
@@ -49,6 +52,44 @@ describe("tailcat api", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/metrics/activity?page=2&limit=10&sort=src&order=asc&src_prefix=tc%3A"
     );
+  });
+});
+
+describe("selector api", () => {
+  it("loads full selector configs, including unlisted selectors", async () => {
+    const selector = {
+      id: "auto",
+      name: "Auto",
+      description: "Pick a model per request",
+      strategy: "decision",
+      targets: ["a", "b"],
+      routes: { coding: { model: "a", description: "Code" } },
+      settings: {
+        spillover: 1,
+        decider: "b",
+        default: "a",
+        minConfidence: 0,
+        timeout: 5_000_000_000,
+        instructions: "",
+        mode: "request",
+      },
+      unlisted: true,
+      metadata: { team: "ml" },
+    };
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ selectors: [selector] }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(fetchSelectorConfigs()).resolves.toEqual([selector]);
+    expect(mockFetch).toHaveBeenCalledWith("/api/selectors");
+    expect(get(selectorConfigs)).toEqual([selector]);
+  });
+
+  it("rejects when the admin-only endpoint is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    await expect(fetchSelectorConfigs()).rejects.toThrow("Failed to fetch selectors: 403");
   });
 });
 
