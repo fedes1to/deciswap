@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { link } from "svelte-spa-router";
   import type { SelectorConfig, SelectorRoute } from "../../lib/types";
   import * as Card from "$lib/components/ui/card/index.js";
   import Tag from "../Tag.svelte";
@@ -105,6 +106,7 @@
             {#each targets as target (target)}
               <a
                 href="/models/{encodeURIComponent(target)}"
+                use:link
                 class="font-mono text-xs hover:underline"
               >{target}</a>
             {/each}
@@ -164,6 +166,7 @@
                   {/if}
                   <a
                     href="/models/{encodeURIComponent(detail.model)}"
+                    use:link
                     class="font-mono text-xs hover:underline"
                   >{detail.model}</a>
                 </div>

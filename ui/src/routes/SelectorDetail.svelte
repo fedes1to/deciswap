@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { params } from "svelte-spa-router";
+  import { link, params } from "svelte-spa-router";
   import { fetchSelectorConfigs, selectorConfigs } from "../stores/api";
   import CopyableId from "../components/CopyableId.svelte";
   import Tag from "../components/Tag.svelte";
@@ -35,12 +35,12 @@
   {:else if loadError && !selector}
     <Card.Root class="shrink-0 p-6">
       <p class="text-destructive text-sm">{loadError}</p>
-      <a href="/selectors" class="text-primary text-sm hover:underline">Back to Selectors</a>
+      <a href="/selectors" use:link class="text-primary text-sm hover:underline">Back to Selectors</a>
     </Card.Root>
   {:else if !selector}
     <Card.Root class="shrink-0 p-6">
       <p class="text-muted-foreground">Selector “{selectorId}” not found.</p>
-      <a href="/selectors" class="text-primary hover:underline">Back to Selectors</a>
+      <a href="/selectors" use:link class="text-primary hover:underline">Back to Selectors</a>
     </Card.Root>
   {:else}
     <Card.Root class="shrink-0 gap-0 overflow-hidden py-0">

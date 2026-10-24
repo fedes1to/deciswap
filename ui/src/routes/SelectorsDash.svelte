@@ -97,7 +97,7 @@
                 <a
                   href="/selectors/{encodeURIComponent(selector.id)}"
                   use:link
-                  class="block min-w-0 hover:underline"
+                  class="block min-w-0"
                 >
                   <div class="truncate text-sm font-medium">
                     {selector.name || selector.id}
